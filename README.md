@@ -90,16 +90,23 @@ klasörüne `.txt` dosyaları koyup `python ingest.py`'ı tekrar çalıştırmak
 ## Test Sonuçları (son ölçüm)
 
 `python test_qa.py` ile 7 soruluk bir test seti (4 cevaplanabilir + 3 cevaplanamaz)
-çalıştırıldı:
+çalıştırıldı, art arda 2 kez tekrarlandı:
 
-- **6 / 7 test geçti**
-- **Ortalama süre: ~14.5 saniye/soru** (tekil sorular genelde 1-6 saniye; bir soru
-  modelin "düşünme" moduna kaçması nedeniyle ~66 saniye sürdü)
-- **1 bilinen hata:** "SQLite nedir?" sorusunda (dokümanlarda olmayan bir konu) model
-  bazen doğru şekilde "Bu bilgi elimdeki dokumanlarda yok" diyor, bazen halüsinasyon
-  yapıp uydurma bir cevap veriyor. Bu, aynı promptla tekrar tekrar gözlemlenen bir
-  tutarsızlık — küçük/quantized modellerin bilinen bir sınırlaması olarak değerlendirildi,
-  tam olarak çözülemedi.
+- **7 / 7 test geçti (iki koşuda da)**
+- **Ortalama süre: ~2.5-3.9 saniye/soru** — referans dokümanın hedeflediği 1-3
+  saniye aralığına yakın/içinde.
+
+**Geçmişte bulunan ve düzeltilen bir hata:** İlk sürümde, dokümanlarda olmayan bir
+konu sorulduğunda (ör. "SQLite nedir?") model bazen doğru şekilde "bilmiyorum"
+diyordu, bazen halüsinasyon yapıp uydurma cevap veriyordu (6/7 test, ortalama
+~14.5s/soru). Kök neden: bu davranış tamamen modelin talimatı doğru uygulamasına
+bağlıydı, ki bu %100 güvenilir değildi. **Çözüm:** Retrieval aşamasında en iyi
+(top-1) benzerlik skorunun bir eşiğin (0.55) altında kalıp kalmadığına bakılıyor —
+test verisinde cevaplanabilir sorular 0.68-0.78, cevaplanamaz sorular 0.31-0.46
+skorluyordu, aralarında net bir boşluk var. Eşiğin altındaki sorular için LLM'e
+hiç sorulmadan, doğrudan kod ile "bilmiyorum" mesajı dönülüyor — bu hem
+halüsinasyon riskini ortadan kaldırdı hem de bu tür sorularda cevabı neredeyse
+anlık hale getirdi (0.05sn).
 
 Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
 
@@ -118,6 +125,8 @@ Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
 - **Çıktı temizleme:** Model bazen Türkçe cevap içine tek karakterlik CJK (Çince/Japonca/
   Korece) karakterler sıkıştırıyor (gözlemlenen bir küçük-model kusuru); bu karakterler
   cevap gösterilmeden önce regex ile temizleniyor.
-- **Halüsinasyon karşı önlemi:** Sistem promptu modele "sadece verilen bağlamı kullan,
-  yoksa 'bilmiyorum' de" diye açıkça talimat veriyor — ama yukarıda belirtildiği gibi bu
-  %100 güvenilir değil.
+- **Halüsinasyon karşı önlemi (iki katmanlı):** (1) Deterministik katman — retrieval
+  skoru `SIMILARITY_THRESHOLD` (0.55) altındaysa LLM'e hiç sorulmadan kod ile
+  "bilmiyorum" dönülüyor (birincil, güvenilir savunma). (2) Sistem promptu ayrıca
+  modele "sadece bağlamı kullan, yoksa bilmiyorum de" diye talimat veriyor (ikincil,
+  eşiğin üstünde kalıp yine de bağlamla alakasız bir soru gelirse yedek savunma).

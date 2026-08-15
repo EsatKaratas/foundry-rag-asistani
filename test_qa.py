@@ -14,9 +14,7 @@ Calistirma: python test_qa.py
 import time
 from datetime import datetime, timezone
 
-from app import answer_query, FALLBACK_MESSAGE
-
-NO_INFO_MESSAGE = "Bu bilgi elimdeki dokumanlarda yok."
+from app import answer_query, FALLBACK_MESSAGE, NO_INFO_MESSAGE
 
 # (soru, dokumanlarda cevabi var mi, beklenen kaynak dosya ya da None)
 TEST_CASES = [

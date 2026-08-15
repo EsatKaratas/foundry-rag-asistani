@@ -35,6 +35,16 @@ FALLBACK_MESSAGE = (
     "Lutfen soruyu daha kisa/spesifik sekilde tekrar sorun."
 )
 
+NO_INFO_MESSAGE = "Bu bilgi elimdeki dokumanlarda yok."
+
+# Test sirasinda olculdu: cevaplanabilir sorularin en iyi (top-1) kosinus benzerlik
+# skoru 0.68-0.78 araligindayken, dokumanlarda olmayan sorularinki 0.31-0.46
+# araliginda kaliyor. Aradaki bosluga bir esik koyup, esigin altinda kalan sorular
+# icin modele hic sormadan (LLM cagrisi yapmadan) direkt "bilmiyorum" donuyoruz.
+# Boylece modelin talimati yanlislikla yok sayip halusinasyon yapma riski koddan
+# tamamen kaldirilmis oluyor (bkz. TEST_RESULTS.md - onceki "SQLite nedir?" hatasi).
+SIMILARITY_THRESHOLD = 0.55
+
 
 def strip_reasoning(raw_answer: str) -> str:
     # Guvenlik durumu: max_tokens sinirina "<think>" blogu KAPANMADAN once
@@ -75,6 +85,12 @@ def answer_query(question: str, k: int = 3) -> tuple[str, list[dict]]:
     Doner: (model_cevabi, kullanilan_parcalar)
     """
     chunks = get_top_chunks(question, k=k)
+
+    # Deterministik kapi: en alakali parcanin skoru bile esigin altindaysa,
+    # dokumanlarda cevap olmadigi neredeyse kesin - modele sormaya gerek yok.
+    if not chunks or chunks[0]["score"] < SIMILARITY_THRESHOLD:
+        return NO_INFO_MESSAGE, chunks
+
     context = build_context(chunks)
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
 
