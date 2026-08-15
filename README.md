@@ -87,26 +87,24 @@ klasörüne `.txt` dosyaları koyup `python ingest.py`'ı tekrar çalıştırmak
 | `data/` | Kaynak dokümanlar (.txt) |
 | `TEST_RESULTS.md` | Son test koşusunun sonuçları (otomatik üretilir) |
 
-## Test Sonuçları (son ölçüm)
+## Test Sonuçları (son ölçüm, gerçek proje dokümanlarıyla)
 
-`python test_qa.py` ile 7 soruluk bir test seti (4 cevaplanabilir + 3 cevaplanamaz)
-çalıştırıldı, art arda 2 kez tekrarlandı:
+`data/` klasörü şu an yaz okulu programı hakkında 5 gerçek doküman içeriyor (genel
+bilgiler, proje seçenekleri, sertifika süreci, staj belgesi süreci, Foundry Local
+teknik detayları). `python test_qa.py` ile 9 soruluk bir test seti (6 cevaplanabilir
++ 3 cevaplanamaz) çalıştırıldı:
 
-- **7 / 7 test geçti (iki koşuda da)**
-- **Ortalama süre: ~2.5-3.9 saniye/soru** — referans dokümanın hedeflediği 1-3
-  saniye aralığına yakın/içinde.
+- **8 / 9 test geçti**
+- **Ortalama süre: ~19 saniye/soru** (çoğu soru 6-10 saniye; bazı sorular modelin
+  "düşünme"ye kaçması nedeniyle daha uzun sürdü)
 
-**Geçmişte bulunan ve düzeltilen bir hata:** İlk sürümde, dokümanlarda olmayan bir
-konu sorulduğunda (ör. "SQLite nedir?") model bazen doğru şekilde "bilmiyorum"
-diyordu, bazen halüsinasyon yapıp uydurma cevap veriyordu (6/7 test, ortalama
-~14.5s/soru). Kök neden: bu davranış tamamen modelin talimatı doğru uygulamasına
-bağlıydı, ki bu %100 güvenilir değildi. **Çözüm:** Retrieval aşamasında en iyi
-(top-1) benzerlik skorunun bir eşiğin (0.55) altında kalıp kalmadığına bakılıyor —
-test verisinde cevaplanabilir sorular 0.68-0.78, cevaplanamaz sorular 0.31-0.46
-skorluyordu, aralarında net bir boşluk var. Eşiğin altındaki sorular için LLM'e
-hiç sorulmadan, doğrudan kod ile "bilmiyorum" mesajı dönülüyor — bu hem
-halüsinasyon riskini ortadan kaldırdı hem de bu tür sorularda cevabı neredeyse
-anlık hale getirdi (0.05sn).
+**Bilinen, çözülemeyen 1 sınır durum:** "Python nasıl öğrenilir?" (dokümanlarda
+olmayan bir soru) bu koşuda halüsinasyon yaptı. Sebebini ölçtük: bu sorunun
+retrieval skoru (0.4386), gerçekten cevaplanabilir bir sorunun skoruyla (0.4414,
+"İletişim için hangi kanal kullanılıyor?") neredeyse birebir aynı — aralarında
+0.003 fark var. Yani **bu iki soru, embedding modelinin gözünde istatistiksel
+olarak ayırt edilemeyecek kadar yakın**; hiçbir sabit eşik ikisini güvenilir
+şekilde ayıramaz. Bu, gerçek bir mühendislik sınırı olarak kabul edildi, gizlenmedi.
 
 Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
 
@@ -125,8 +123,13 @@ Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
 - **Çıktı temizleme:** Model bazen Türkçe cevap içine tek karakterlik CJK (Çince/Japonca/
   Korece) karakterler sıkıştırıyor (gözlemlenen bir küçük-model kusuru); bu karakterler
   cevap gösterilmeden önce regex ile temizleniyor.
-- **Halüsinasyon karşı önlemi (iki katmanlı):** (1) Deterministik katman — retrieval
-  skoru `SIMILARITY_THRESHOLD` (0.55) altındaysa LLM'e hiç sorulmadan kod ile
-  "bilmiyorum" dönülüyor (birincil, güvenilir savunma). (2) Sistem promptu ayrıca
-  modele "sadece bağlamı kullan, yoksa bilmiyorum de" diye talimat veriyor (ikincil,
-  eşiğin üstünde kalıp yine de bağlamla alakasız bir soru gelirse yedek savunma).
+- **Halüsinasyon karşı önlemi (iki katmanlı, ikisi de mükemmel değil):** (1)
+  Deterministik katman — retrieval skoru `SIMILARITY_THRESHOLD` (0.40) altındaysa
+  LLM'e hiç sorulmadan kod ile "bilmiyorum" dönülüyor; bu, AÇIKÇA alakasız
+  soruları güvenilir şekilde yakalıyor. (2) Sistem promptu ayrıca modele "sadece
+  bağlamı kullan, yoksa bilmiyorum de" diye talimat veriyor; bu, eşiğin hemen
+  üstünde kalan sınır durumlar için ikincil bir savunma ama %100 güvenilir değil
+  (bkz. Test Sonuçları). **Eşik neden 0.40 (0.55 değil):** Veri seti 2 dokümandan
+  5 dokümana çıkınca skor dağılımı değişti — bazı gerçek cevaplanabilir sorular
+  0.44-0.50 aralığına düşebiliyor, bu yüzden eşik düşürüldü ve sınır durumlar
+  modelin talimat takibine bırakıldı.

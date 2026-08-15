@@ -18,13 +18,15 @@ from app import answer_query, FALLBACK_MESSAGE, NO_INFO_MESSAGE
 
 # (soru, dokumanlarda cevabi var mi, beklenen kaynak dosya ya da None)
 TEST_CASES = [
-    ("Foundry Local nedir?", True, "foundry_local_nedir.txt"),
-    ("Foundry Local internet baglantisina ihtiyac duyar mi?", True, "foundry_local_nedir.txt"),
-    ("RAG nedir, adimlarini kisaca acikla.", True, "rag_nedir.txt"),
-    ("RAG kullanmanin en buyuk faydasi nedir?", True, "rag_nedir.txt"),
+    ("Yaz okulu programi kac hafta suruyor?", True, "genel_bilgiler.txt"),
+    ("Iletisim icin hangi kanal kullaniliyor?", True, "genel_bilgiler.txt"),
+    ("Hangi proje secenekleri var?", True, "proje_secenekleri.txt"),
+    ("Sertifika almak icin ne yapmam lazim?", True, "sertifika_ve_teslim.txt"),
+    ("Zorunlu stajda sigorta girisini kim yapiyor?", True, "staj_belgesi_sureci.txt"),
+    ("RAG mimarisinin adimlari nelerdir?", True, "foundry_local_teknik_detaylar.txt"),
     ("Python nasil ogrenilir?", False, None),
-    ("SQLite nedir?", False, None),
     ("Bugun hava nasil?", False, None),
+    ("En sevdigin renk nedir?", False, None),
 ]
 
 

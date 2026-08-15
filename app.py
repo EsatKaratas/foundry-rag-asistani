@@ -37,13 +37,20 @@ FALLBACK_MESSAGE = (
 
 NO_INFO_MESSAGE = "Bu bilgi elimdeki dokumanlarda yok."
 
-# Test sirasinda olculdu: cevaplanabilir sorularin en iyi (top-1) kosinus benzerlik
-# skoru 0.68-0.78 araligindayken, dokumanlarda olmayan sorularinki 0.31-0.46
-# araliginda kaliyor. Aradaki bosluga bir esik koyup, esigin altinda kalan sorular
-# icin modele hic sormadan (LLM cagrisi yapmadan) direkt "bilmiyorum" donuyoruz.
-# Boylece modelin talimati yanlislikla yok sayip halusinasyon yapma riski koddan
-# tamamen kaldirilmis oluyor (bkz. TEST_RESULTS.md - onceki "SQLite nedir?" hatasi).
-SIMILARITY_THRESHOLD = 0.55
+# Onemli notlar (veri seti buyuyup cesitlenince yeniden olculdu):
+# Ilk (2 dokumanlik, dar konulu) test setinde cevaplanabilir/cevaplanamaz sorular
+# arasinda net bir bosluk vardi (0.68-0.78 vs 0.31-0.46), o yuzden 0.55 esigi
+# hersey icin yeterliydi. Ama 5 dokumanlik, daha cesitli bu veri setinde bazi
+# gercekten cevaplanabilir sorular (ornegin kisa/soyut ifade edilenler) 0.44-0.50
+# araligina dusebiliyor - bu da bazi cevaplanamaz sorularla (ornegin 0.44) neredeyse
+# cakisiyor. Yani TEK bir esik, TEK basina %100 guvenilir bir ayrac degil; esik
+# veri setine ve soru ifadesine bagli.
+#
+# Pragmatik cozum: esigi dusuk tutup (0.40) sadece ACIKCA alakasiz sorulari
+# (skoru cok dusuk olanlari) LLM'e hic sormadan eliyoruz. Sinirdaki/belirsiz
+# durumlar icin modelin kendi talimat takibi ikincil bir savunma katmani olarak
+# devrede kaliyor (bkz. SYSTEM_PROMPT_TEMPLATE).
+SIMILARITY_THRESHOLD = 0.40
 
 
 def strip_reasoning(raw_answer: str) -> str:

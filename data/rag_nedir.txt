@@ -1,7 +1,0 @@
-RAG (Retrieval-Augmented Generation) Nedir?
-
-RAG, bir yapay zeka tasarim desenidir. Uc adimdan olusur: once ilgili bilgiyi bir dokuman kumesinden getirirsin (retrieve), sonra bu bilgiyi modelin girdisine ekleyerek zenginlestirirsin (augment), son olarak model bu zenginlestirilmis baglami kullanarak bir cevap uretir (generate).
-
-RAG kullanmanin en buyuk faydasi, modelin cevaplarinin senin kendi verine dayanmasidir. Bu sayede model, egitim verisinde olmayan ozel bilgilere (ornegin bir sirketin ic dokumanlarina) dogru cevap verebilir ve halusinasyon riski azalir.
-
-RAG boru hattinin calisma mantigi soyle ozetlenebilir: kullanicinin sorusu once bir gomme (embedding) modeliyle sayisal bir vektore cevrilir. Bu vektor, onceden hazirlanmis dokuman parcalarinin (chunk) vektorleriyle karsilastirilir. En yakin (en benzer) parcalar bulunur ve bu parcalar, kullanicinin sorusuyla birlikte sohbet modeline (chat model) gonderilir. Model, sadece bu baglami kullanarak cevap uretmesi konusunda yonlendirilir.

@@ -1,7 +1,0 @@
-Foundry Local Nedir?
-
-Microsoft Foundry Local, buyuk dil modellerini tamamen kullanicinin kendi bilgisayarinda calistirmayi saglayan hafif bir calisma zamanidir (runtime). Bulut hesabina veya internet baglantisina ihtiyac duymaz. Model indirme, model yonetimi ve CPU/GPU/NPU hizlandirmasini otomatik olarak yapar.
-
-Foundry Local, ozellikle cevrimdisi (offline) calismasi gereken uygulamalar icin uygundur. Ornegin bir sirket kendi ic dokumanlarina soru-cevap yapan bir asistan gelistirmek istiyorsa ve verinin disariya cikmasini istemiyorsa, Foundry Local ile modeli tamamen yerel makinede calistirabilir.
-
-Foundry Local, komut satiri araci (CLI) ve Python SDK sunar. CLI uzerinden "foundry model download" ve "foundry model load" komutlariyla model indirilip belleğe yuklenebilir. Servis calismaya basladiginda, OpenAI uyumlu bir yerel API sunar; yani standart openai Python kutuphanesiyle bu yerel servise baglanilabilir.

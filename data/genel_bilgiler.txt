@@ -1,0 +1,11 @@
+Yaz Okulu Programi - Genel Bilgiler
+
+Program, Barbaros Gunay (CSA Manager, CSU Turkey) tarafindan yurutulen, Microsoft'un yillardir (6-7 yildir) devam ettirdigi gonullu bir yaz programidir. Resmi bir Microsoft staj programi degildir; katilimcilarin kendi okullariyla gorusup bunu staj olarak kabul ettirip ettiremeyecegini kontrol etmesi gerekir. YOK yonetmeliginde "online staj" kavraminin tanimli olmadigi acikca belirtilmistir, bu bir risktir.
+
+Program bu sene cok buyudu: gecen sene 200 kisiydi, bu sene Huawei'nin kendi grubunda paylasmasiyla aniden 3000 kisiye cikti.
+
+Iletisim kanali WhatsApp gruplaridir (3-4 ayri grup, 1000 kisi siniri nedeniyle). Discord'a gecis planlanmisti ama Discord Turkiye'de hala engelli oldugu icin gerceklesmedi.
+
+Kickoff toplantisi 29 Haziran 2026'da yapildi. Resmi program tarihleri 29 Haziran baslangic, 27 Temmuz bitis (yaklasik 4 hafta), 6 haftaya kadar uzatilabilir. Genel ust sinir Eylul ayidir, cunku Barbaros Eylul'den sonra cok yogun oluyor.
+
+Haftalik online webinarlar duzenleniyor; ayrica Microsoft'tan farkli calisanlarin (Mehmet Aras, Senem Isik, Mustafa Asiroglu, Murat Odabasi, Faik Hakan Bilgen, Baris Usta gibi) katildigi ek teknik/kariyer webinarlari da var.
