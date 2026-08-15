@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.log
+
+# Ingest ile yeniden uretilebilir oldugu icin veritabani repoya girmiyor.
+# Kendi verinle "python ingest.py" calistirinca yeniden olusur.
+rag.db
