@@ -34,6 +34,14 @@ TEST_CASES = [
     ("Valorant hangi tarihte cikti?", False, None),
     ("Valorant turnuvalarinda odul havuzu ne kadar?", False, None),
     ("Bugun hava nasil?", False, None),
+    # Bu vaka ablasyon calismasi sirasinda bulundu ve en zorlayici olani:
+    # sorunun kelimeleri korpusta GECIYOR ("duelist", "ajan", "rol") ama
+    # istenen bilgi (ajan isimleri) korpusta HIC yok - hicbir dokumanda tek
+    # bir ajan ismi gecmiyor. Sozcuksel kapi bu soruyu gecirir (kelime
+    # eslesmesi var), sayi kontrolu goremez (rakam yok). Eklendigi anda
+    # sistem "Jett, Sage, Raze, Breach" uydurup ustune kaynak gosteriyordu.
+    # Ozel isim dayanak kontrolu bunun icin eklendi.
+    ("Duelist rolundeki ajanlarin isimleri nelerdir?", False, None),
 ]
 
 

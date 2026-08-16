@@ -92,8 +92,10 @@ klasörüne `.txt` dosyaları koyup `python ingest.py`'ı tekrar çalıştırmak
 | `lexical_gate.py` | Sözcüksel alaka kapısı — konu kaymasını deterministik olarak yakalar |
 | `app.py` | Streamlit arayüzü + LLM entegrasyonu (RAG'ın "generate" adımı) |
 | `test_qa.py` | Fonksiyonel test seti — cevaplanabilir/cevaplanamaz sorularla doğrulama |
+| `ablation.py` | Ablasyon çalışması — her savunma katmanının katkısını ölçer |
 | `data/` | Kaynak dokümanlar (.txt) |
 | `TEST_RESULTS.md` | Son test koşusunun sonuçları (otomatik üretilir) |
+| `ABLATION_RESULTS.md` | Ablasyon çalışmasının sonuçları (otomatik üretilir) |
 
 ## En değerli bulgu: popüler bir konuya geçince ne değişti
 
@@ -130,14 +132,15 @@ tarihler, isimler) kodla kontrol edilmelidir.
 ## Test Sonuçları
 
 `data/` klasörü Valorant hakkında 6 doküman içeriyor. `python test_qa.py` ile
-9 soruluk bir ana test seti (6 cevaplanabilir + 3 cevaplanamaz) ve ayrıca 3 uç
+10 soruluk bir ana test seti (6 cevaplanabilir + 4 cevaplanamaz) ve ayrıca 3 uç
 durum vakası çalıştırıldı:
 
-- **9 / 9 ana test geçti** — 3 ardışık koşuda kararlı
+- **10 / 10 ana test geçti** — 4 ardışık koşuda kararlı
 - **3 / 3 uç durum testi geçti** (boş sorgu, yalnızca boşluk, çok genel soru)
-- **Ortalama süre: 1.36 - 1.52 saniye/soru** — referans dokümanın hedeflediği
-  1-3 saniye aralığının içinde. Cevaplanamaz sorular **0.06 saniyede** reddediliyor,
-  çünkü sözcüksel kapı hiçbir LLM çağrısı yapmadan karar veriyor.
+- **Ortalama süre: 1.43 saniye/soru** (temiz sunucu durumunda ölçüldü) — referans
+  dokümanın hedeflediği 1-3 saniye aralığının içinde. Cevaplanamaz soruların çoğu
+  **0.06 saniyede** reddediliyor, çünkü sözcüksel kapı hiçbir LLM çağrısı yapmadan
+  karar veriyor.
 
 **Uç durumlar neden ayrı bölümde:** bu girdiler için "doğru cevap" tek bir şey
 değil; referans plan yalnızca sistemin bunları sağlıklı karşılamasını istiyor,
@@ -159,6 +162,57 @@ kelimeleri korpusta **hiç geçmiyor**, dolayısıyla getirilen metin bu soruyu
 cevaplıyor olamaz. Bu kapı eklendikten sonra test 9/9'a çıktı.
 
 Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
+
+## Ablasyon Çalışması: her katman gerçekten gerekli mi?
+
+Bir sistemde beş ayrı savunma katmanı varsa, "hepsi gerekli" demek bir **iddiadır**.
+İddia ancak katman kapatılıp sonuç ölçülerek kanıtlanır. `python ablation.py` her
+katmanı tek tek kapatıp testi yeniden koşar:
+
+| Yapılandırma | Ana test | Katkısı |
+|---|---|---|
+| **Tam sistem** | **10/10** | referans |
+| Sözcüksel kapı kapalı | 8/10 | **2 vaka** |
+| Özel isim kontrolü kapalı | 9/10 | **1 vaka** |
+| LLM alaka denetleyicisi kapalı | 10/10 | 0 vaka |
+| Sayı doğrulaması kapalı | 10/10 | 0 vaka |
+| Kosinüs eşiği kapalı | 10/10 | 0 vaka |
+| **Çıplak RAG** (hiç savunma yok) | **6/10** | **4 vaka** |
+
+Üç sonuç çıkıyor:
+
+**1. Çıplak RAG 10 sorudan 4'ünü kaybediyor.** Referans tutorial'daki "getir + üret"
+kurgusu, dokümanlarda cevabı olmayan her soruya uydurma cevap veriyor. Savunma
+katmanları bu projenin süsü değil, çalışmasının şartı.
+
+**2. İki deterministik katman tek başına 3 vaka kurtarıyor.** Sözcüksel kapı ve özel
+isim kontrolü — ikisi de hiç LLM çağrısı yapmıyor.
+
+**3. Üç katman bu test setinde 0 vaka katıyor.** Bu, "silinmeliler" demek değil;
+**test setinin o katmanların savunduğu hata tipini içermediği** anlamına geliyor.
+Nitekim ablasyon sırasında tam da böyle bir açık bulundu (aşağıya bakın) ve teste
+eklendi. Doğru tepki katmanı silmek değil, eksik test vakasını yazmaktı.
+
+### Ablasyonun bulduğu gerçek açık
+
+Ablasyon "LLM alaka denetleyicisi 0 vaka katıyor" dediğinde, silmek yerine şu
+soruldu: *bu katman neyi savunuyordu ve test seti onu ölçüyor mu?* Cevap hayırdı.
+Eksik vaka şuydu — **kelimeleri korpusta geçen ama cevabı geçmeyen soru**:
+
+```
+Soru : "Duelist rolündeki ajanların isimleri nelerdir?"
+Cevap: "Jett, Sage, Raze ve Breach'tir. (Kaynak: ajan_rolleri.txt)"
+```
+
+Dokümanlarda **hiçbir ajan ismi geçmiyor.** Sistem uydurdu ve üstüne kaynak
+göstererek halüsinasyonu yetkili gösterdi (bilgi ayrıca yanlış: Sage sentinel,
+Breach initiator). Hiçbir katman yakalayamadı: sözcüksel kapı `duelist` eşleştiği
+için geçirdi, sayı kontrolü rakam olmadığı için göremedi.
+
+Çözüm, sayı kontrolünün doğal genellemesi oldu: **cevapta geçen ama bağlamda hiç
+geçmeyen özel isimler**. Model paraphrase yaparken yeni özel isim uydurmaz; ortaya
+çıkan bir özel isim varsa o bilgi bağlamdan gelmiyordur. Entegrasyondan önce
+6 geçerli cevaba karşı ölçüldü: **0 yanlış eleme**.
 
 ## Tasarım Kararları ve Kısıtlar
 
@@ -249,6 +303,21 @@ Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
   yazdığında bu fonksiyon hiçbir şey yapmıyor. Aynı ilke: kesin bilinen bir bilgi
   modelden istenmez, kodla yazılır.
 
+- **Özel isim dayanağı:** Cevapta geçen ama bağlamda hiç geçmeyen özel isim varsa
+  cevap reddediliyor (`lexical_gate.ungrounded_proper_nouns`). Sayı kontrolünün
+  göremediği halüsinasyon türünü yakalar. Yanlış pozitifi düşük tutan iki kural:
+  cümle başındaki kelimeler sayılmaz (her cümle büyük harfle başlar) ve
+  karşılaştırma normalize edilmiş kaba gövde üzerinden yapılır.
+
+- **Cevap uzunluğu kodla sınırlanıyor:** Sistem promptunun 1. kuralı "en fazla
+  3 cümle" diyor — ama bu bir *talep*, garanti değil. Belirsiz sorularda model
+  kuralı görmezden gelip 1000-1300 karakterlik metinler üretebiliyordu (ölçüldü,
+  koşudan koşuya değişiyordu). `limit_answer()` iki sınırı birlikte uyguluyor:
+  en fazla 3 birim (cümle **ya da** madde satırı — model bazen noktalama
+  kullanmayan listeler ürettiği için satır sonu da sınır sayılıyor) ve 700 karakter.
+  **Bilinen sınır:** tek bir birim tek başına 700 karakteri aşarsa kırpılmıyor
+  (cümle ortasından kesmek, bozuk cevaptan daha kötü bir çıktı üretirdi).
+
 - **Uç durumlar:** Boş sorgu, yalnızca boşluk içeren sorgu ve çok genel sorular
   `test_qa.py` içinde ayrı bir bölümde test ediliyor (3/3 geçti).
 
@@ -259,6 +328,30 @@ Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
   göndermiyor), ancak fonksiyon doğrudan çağrıldığında çöküyordu. Kontrol
   `retrieve_and_gate()` başına konuldu — hem akışsız (test) hem akışlı (arayüz) yol
   buradan geçiyor.
+
+## İşletim Notu — GPU belleği ve süre ölçümü
+
+Foundry Local arka arkaya çok istek aldığında GPU belleğini biriktiriyor ve üretim
+süreleri belirgin şekilde yavaşlıyor. **Bu bir kod hatası değil**, servisin bellek
+davranışı. Ölçülen değerler (RTX 4060 Ti, 8 GB VRAM):
+
+| Durum | GPU belleği | Ortalama süre |
+|---|---|---|
+| Servis yeni başlatılmış | 5581 MiB | **1.43 sn/soru** |
+| Tek test koşusu sonrası | 7798 MiB | — |
+| Birkaç ardışık koşu sonrası | ~7900 MiB (%96) | 4.7 - 8.6 sn/soru |
+
+Ayırt edici kanıt: yavaşlama **yalnızca üretim yapan** soruları etkiliyor; kapıda
+reddedilen sorular her durumda 0.06 saniyede dönüyor (GPU'ya hiç gitmiyorlar).
+
+Bu yüzden README'deki süre değerleri **temiz sunucu durumunda** ölçülmüştür.
+Kendi ölçümünü yapacaksan önce:
+
+```bash
+foundry server restart
+foundry model load qwen3-embedding-0.6b
+foundry model load qwen3-4b
+```
 
 ## Kaynaklar
 

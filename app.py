@@ -16,7 +16,7 @@ import sqlite3
 import streamlit as st
 
 from common import CHAT_MODEL, DB_PATH, EMBED_MODEL, get_client
-from lexical_gate import has_lexical_support
+from lexical_gate import has_lexical_support, ungrounded_proper_nouns
 from retrieval import get_top_chunks
 
 # qwen3-4b bir "reasoning" modelidir: cevaptan once <think>...</think> icinde
@@ -36,6 +36,17 @@ FALLBACK_MESSAGE = (
 )
 
 NO_INFO_MESSAGE = "Bu bilgi elimdeki dokumanlarda yok."
+
+# --- Savunma katmanlari (ablasyon anahtarlari) ---
+# Sistemin dort savunma katmani tek yerde toplandi. Varsayilan olarak hepsi
+# acik; ablation.py bunlari tek tek kapatip her katmanin teste ne kattigini
+# olcuyor (sonuc: ABLATION_RESULTS.md). Bir tasarim kararinin gercekten
+# gerekli olup olmadigi ancak kapatilip olculerek gosterilebilir.
+ENABLE_SIMILARITY_GATE = True    # 1. kapi: kosinus esigi (deterministik)
+ENABLE_LEXICAL_GATE = True       # 2. kapi: sozcuksel dayanak (deterministik)
+ENABLE_RELEVANCE_GRADER = True   # 3. kapi: LLM alaka denetleyicisi (CRAG)
+ENABLE_GROUNDEDNESS_CHECK = True # uretim sonrasi: sayi dogrulamasi (deterministik)
+ENABLE_PROPER_NOUN_CHECK = True  # uretim sonrasi: ozel isim dayanagi (deterministik)
 
 # Alaka karari uc bolgeli:
 #   skor >= HIGH_CONFIDENCE      -> kesin alakali (LLM'e sorulmaz)
@@ -130,6 +141,51 @@ NUMBER_PATTERN = re.compile(r"\d+")
 SOURCE_CITATION_PATTERN = re.compile(r"\(\s*kaynak\s*:", re.IGNORECASE)
 
 
+MAX_SENTENCES = 3
+MAX_ANSWER_CHARS = 700
+
+# Cevabi anlamli birimlere boler: cumle sonlari VE satir sonlari.
+# Satir sonu da sinir sayilmali, cunku model bazen noktalama kullanmayan
+# madde listeleri uretiyor - o durumda tum cevap tek bir "cumle" gorunur.
+ANSWER_UNIT_PATTERN = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def limit_answer(answer: str) -> str:
+    """Cevabi, sistem promptunun soz verdigi sinirlara kodla indirger.
+
+    NEDEN: Sistem promptunun 1. kurali "en fazla 3 cumle" diyor, ama bu bir
+    TALEP - garanti degil. Belirsiz sorularda model kurali gormezden gelip
+    1000-1300 karakterlik metinler uretebiliyor (olculdu, kosudan kosuya
+    degisiyor). Bu, cevap uzunlugunu ongorulemez hale getiriyordu.
+
+    Projedeki genel ilke: sistemin verdigi soz kesin olarak dogrulanabiliyorsa
+    modelden rica edilmez, kodla saglanir. Ayni sebeple sayilar, ozel isimler
+    ve kaynak satiri da kodla denetleniyor.
+
+    Iki sinir birlikte uygulanir - biri digerinin kacirdigini yakalar:
+      1. En fazla MAX_SENTENCES birim (cumle ya da madde satiri)
+      2. En fazla MAX_ANSWER_CHARS karakter (birim sinirinda kesilir)
+    """
+    if answer.strip() in (NO_INFO_MESSAGE, FALLBACK_MESSAGE):
+        return answer
+
+    units = [u.strip() for u in ANSWER_UNIT_PATTERN.split(answer.strip()) if u.strip()]
+    if not units:
+        return answer
+
+    kept: list[str] = []
+    length = 0
+    for unit in units[:MAX_SENTENCES]:
+        # Butceyi asacaksa ekleme - ama en az bir birim her zaman kalsin,
+        # yoksa cok uzun tek cumlelik cevaplarda bos metin donerdi.
+        if kept and length + len(unit) > MAX_ANSWER_CHARS:
+            break
+        kept.append(unit)
+        length += len(unit) + 1
+
+    return " ".join(kept).strip()
+
+
 def ensure_source_citation(answer: str, chunks: list[dict]) -> str:
     """Cevabin sonunda kaynak satiri yoksa, kullanilan parcalardan uretip ekler.
 
@@ -187,7 +243,18 @@ def is_answer_grounded(client, context: str, answer: str) -> bool:
     if answer.strip() in (NO_INFO_MESSAGE, FALLBACK_MESSAGE):
         return True
 
-    return not has_ungrounded_numbers(context, answer)
+    if ENABLE_GROUNDEDNESS_CHECK and has_ungrounded_numbers(context, answer):
+        return False
+
+    # Ozel isim dayanagi: sayi kontrolunun goremedigi halusinasyon turu.
+    # Olculen ornek: "Duelist rolundeki ajanlarin isimleri nelerdir?" sorusuna
+    # sistem "Jett, Sage, Raze, Breach" uydurup ustune kaynak gosteriyordu;
+    # korpusta hicbir ajan ismi gecmiyor. Rakam olmadigi icin sayi kontrolu,
+    # "duelist" kelimesi korpusta gectigi icin de sozcuksel kapi yakalayamadi.
+    if ENABLE_PROPER_NOUN_CHECK and ungrounded_proper_nouns(context, answer):
+        return False
+
+    return True
 
 
 def _generate_answer(client, system_prompt: str, question: str, max_tokens: int) -> str:
@@ -242,7 +309,9 @@ def retrieve_and_gate(question: str, k: int = 3):
 
     # 1. Kapi (ucuz): en iyi parca bile cok dusuk skorluysa, hicbir LLM cagrisi
     # yapmadan eliyoruz.
-    if not chunks or chunks[0]["score"] < SIMILARITY_THRESHOLD:
+    if not chunks:
+        return None, chunks, NO_INFO_MESSAGE, ""
+    if ENABLE_SIMILARITY_GATE and chunks[0]["score"] < SIMILARITY_THRESHOLD:
         return None, chunks, NO_INFO_MESSAGE, ""
 
     # 2. Kapi (sozcuksel): kosinus benzerliginin yapisal olarak goremedigi
@@ -253,9 +322,10 @@ def retrieve_and_gate(question: str, k: int = 3):
     # yakin buluyordu ve sistem yanlis soruyu cevapliyordu (konu kaymasi).
     # Deterministik ve LLM cagrisindan ONCE calisiyor: hem daha guvenilir hem
     # daha hizli. Ayrinti: lexical_gate.py
-    retrieved_text = "\n".join(chunk["content"] for chunk in chunks)
-    if not has_lexical_support(question, retrieved_text):
-        return None, chunks, NO_INFO_MESSAGE, ""
+    if ENABLE_LEXICAL_GATE:
+        retrieved_text = "\n".join(chunk["content"] for chunk in chunks)
+        if not has_lexical_support(question, retrieved_text):
+            return None, chunks, NO_INFO_MESSAGE, ""
 
     client = get_client()
 
@@ -264,7 +334,9 @@ def retrieve_and_gate(question: str, k: int = 3):
     # sadece gri bolgedekiler icin alaka denetleyicisini calistiriyoruz.
     relevant_chunks = []
     for chunk in chunks:
-        if chunk["score"] >= HIGH_CONFIDENCE_THRESHOLD:
+        if not ENABLE_RELEVANCE_GRADER:
+            relevant_chunks.append(chunk)
+        elif chunk["score"] >= HIGH_CONFIDENCE_THRESHOLD:
             relevant_chunks.append(chunk)
         elif is_chunk_relevant(client, question, chunk["content"]):
             relevant_chunks.append(chunk)
@@ -302,7 +374,7 @@ def answer_query(question: str, k: int = 3) -> tuple[str, list[dict]]:
     if not is_answer_grounded(client, context, answer):
         return NO_INFO_MESSAGE, chunks
 
-    return ensure_source_citation(answer, chunks), chunks
+    return ensure_source_citation(limit_answer(answer), chunks), chunks
 
 
 def stream_generation(system_prompt: str, question: str):
@@ -640,11 +712,13 @@ def main() -> None:
                 slot.empty()
                 slot.markdown(answer)
             else:
-                # Model kaynak satirini atlamis olabilir (olculdu: ~3 cevaptan
-                # 1'inde). Eksikse kodla ekleyip ekrandaki metni tazeliyoruz.
-                with_citation = ensure_source_citation(answer, chunks)
-                if with_citation != answer:
-                    answer = with_citation
+                # Akis bittikten sonra iki deterministik duzeltme: cumle
+                # sinirini uygula ve kaynak satiri eksikse ekle (olculdu:
+                # model kaynagi ~3 cevaptan 1'inde atliyor). Degisiklik varsa
+                # ekrandaki metni tazeliyoruz.
+                finalized = ensure_source_citation(limit_answer(answer), chunks)
+                if finalized != answer:
+                    answer = finalized
                     slot.empty()
                     slot.markdown(answer)
 

@@ -143,6 +143,56 @@ def has_lexical_support(question: str, context: str) -> bool:
     return any(stem in context_stems for stem in stems)
 
 
+# --- Cevap tarafi: ozel isim dayanagi ---
+
+# Markdown vurgusu ve noktalama, kelime sinirlarini bozmasin diye temizlenir.
+MARKUP_PATTERN = re.compile(r"[*_`#>]+")
+SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?:;\n])\s+")
+CAPITALIZED_PATTERN = re.compile(r"\b([A-ZÇĞİÖŞÜ][\wçğıöşüÇĞİÖŞÜ]{2,})\b")
+
+
+def ungrounded_proper_nouns(context: str, answer: str) -> list[str]:
+    """Cevapta gecen ama baglamda hic gecmeyen ozel isimleri doner.
+
+    NEDEN: Sayi kontrolu (has_ungrounded_numbers) yalnizca rakam iceren
+    halusinasyonlari yakalar. Olculen gercek acik:
+
+        Soru : "Duelist rolundeki ajanlarin isimleri nelerdir?"
+        Cevap: "Jett, Sage, Raze ve Breach'tir. (Kaynak: ajan_rolleri.txt)"
+
+    Korpusta hicbir ajan ismi gecmiyor. Sozcuksel kapi bu soruyu gecirdi
+    (cunku "duelist" kelimesi korpusta var), sayi kontrolu goremedi (rakam
+    yok), LLM denetleyicisi de yakalayamadi. Sistem uydurdu ve ustune kaynak
+    gostererek halusinasyonu yetkili gosterdi.
+
+    Bu fonksiyon ayni deterministik fikri ozel isimlere genisletiyor: model
+    paraphrase yaparken yeni ozel isim UYDURMAZ; baglamda gecmeyen bir ozel
+    isim gorunuyorsa, o bilgi baglamdan gelmiyor demektir.
+
+    Yanlis pozitifi dusuk tutan iki kural:
+      1. Cumle basindaki kelimeler sayilmaz (her cumle buyuk harfle baslar,
+         ozel isim olduklarini gostermez).
+      2. Karsilastirma normalize edilmis kaba govde uzerinden yapilir; boylece
+         "Duelist'in" ile "Duelist" ayni sayilir.
+    """
+    context_stems = {_stem(token) for token in _tokens(context)}
+
+    clean_answer = MARKUP_PATTERN.sub(" ", answer)
+    ungrounded = []
+
+    for sentence in SENTENCE_SPLIT_PATTERN.split(clean_answer):
+        words = sentence.split()
+        # Cumlenin ilk kelimesi atlanir: buyuk harfli olmasi ozel isim
+        # oldugunu gostermez.
+        for word in words[1:]:
+            for match in CAPITALIZED_PATTERN.findall(word):
+                stem = _stem(_normalize(match))
+                if stem and stem not in context_stems and match not in ungrounded:
+                    ungrounded.append(match)
+
+    return ungrounded
+
+
 if __name__ == "__main__":
     # Elle hizli kontrol: python lexical_gate.py
     frequency, document_count = _document_frequency()
