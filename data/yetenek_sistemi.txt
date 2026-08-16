@@ -1,0 +1,13 @@
+Valorant Yetenek Sistemi
+
+Valorant'i klasik nisanci oyunlarindan ayiran temel unsur, her ajanin kendine ozgu yeteneklere sahip olmasidir. Nisan alma becerisi tek basina yeterli degildir; yeteneklerin dogru anda ve dogru yerde kullanilmasi turun sonucunu belirleyebilir. Yetenekler dort ana grupta toplanir ve her grubun edinme bicimi farklidir.
+
+Satin alinabilir yetenekler: Her tur basinda alisveris asamasinda kredi ile satin alinir. Kullanildiktan sonra tukenir ve bir sonraki turda yeniden alinmasi gerekir. Bu yetenekler silahlarla ayni kredi havuzunu paylastigi icin, ekonomi kararlarinin bir parcasidir. Tasarruf turlarinda yetenek almamak, bir sonraki turda tam ekipman alabilmek icin bilincli bir tercih olabilir.
+
+Imza yetenegi (signature): Ajanin kimligini belirleyen ve satin alinmasi gerekmeyen yetenegidir. Belirli bir sure sonra veya belirli bir kosul saglandiginda kendiliginden yeniden kullanilabilir hale gelir. Tasarruf turlarinda bile elde bulundugu icin, ekonomisi bozuk takimlarin en guvenilir aracidir.
+
+Nihai yetenek (ultimate): Bir ajanin en guclu yetenegidir ve krediyle satin alinamaz. Bunun yerine nihai puan biriktirilerek hazir hale gelir. Puan biriktirme yollari: rakip oyuncu etkisiz hale getirmek, olmek, spike yerlestirmek, spike'i etkisiz hale getirmek ve haritada bulunan nihai kurelerini toplamak. Hazir olan bir nihai yetenegin ne zaman kullanilacagi takim halinde planlanmasi gereken bir konudur; yanlis anda harcanan bir nihai yetenek, birkac tur boyunca geri gelmez.
+
+Yetenek turleri islevlerine gore de ayrilir. Gorusu kesen yetenekler (duman benzeri) bir bolgeyi gecici olarak gorunmez kilar ve hem giris hem cikis icin ortam hazirlar. Kesif yetenekleri rakiplerin konumunu ortaya cikarir ve takimin korkusuzca ilerlemesini saglar. Etkisiz birakan yetenekler rakibin hareketini veya nisan almasini gecici olarak bozar. Bolge kapatan yetenekler ise bir gecisi tutarak takimin arkasini guvene alir.
+
+Yetenek kullaniminda en sik yapilan hata, yetenekleri tur basinda hemen harcamaktir. Yetenekler tukenen kaynaklardir; turun kritik anina saklanan bir yetenek, basinda rastgele kullanilan iki yetenekten daha degerlidir. Ayni sekilde takim arkadaslarinin yeteneklerini birbirini destekleyecek sirayla kullanmasi, ayni anda dagik bicimde kullanmaktan cok daha etkilidir.

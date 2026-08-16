@@ -1,12 +1,11 @@
 """
 test_qa.py
 
-Fonksiyonel test scripti (referans dokumandaki Hafta 5 - "System Testing & Evaluation"
-adimina karsilik gelir).
+Fonksiyonel test scripti.
 
-Amac: sistemin hem cevaplanabilir hem cevaplanamaz sorularda dogru davrandigini
-dogrulamak ve soru basina cevap suresini olcmek. Sonuc, TEST_RESULTS.md dosyasina
-yazilir.
+Sistemin hem cevaplanabilir hem cevaplanamaz sorularda dogru davrandigini
+dogrular, cevaplarin KALITESINI de denetler ve soru basina sureyi olcer.
+Sonuc TEST_RESULTS.md dosyasina yazilir.
 
 Calistirma: python test_qa.py
 """
@@ -31,16 +30,18 @@ TEST_CASES = [
     ("Keskin nisanci tufeklerinin dezavantaji nedir?", True, "silah_kategorileri.txt"),
     ("Orta bolgeyi kontrol etmek neden onemli?", True, "harita_yapisi.txt"),
     ("Yeni baslayan biri ajan secerken neye dikkat etmeli?", True, "yeni_baslayan_rehberi.txt"),
+    ("Etkisiz hale getirme islemi yarida kesilirse ne olur?", True, "spike_ve_tur_akisi.txt"),
+    ("Nihai yetenek nasil hazir hale gelir?", True, "yetenek_sistemi.txt"),
+    ("Olduktan sonra takim arkadaslarina ne bildirilmeli?", True, "takim_iletisimi.txt"),
+    ("Durarak ates etmek neden onemli?", True, "nisan_alma_teknikleri.txt"),
     ("Valorant hangi tarihte cikti?", False, None),
     ("Valorant turnuvalarinda odul havuzu ne kadar?", False, None),
     ("Bugun hava nasil?", False, None),
-    # Bu vaka ablasyon calismasi sirasinda bulundu ve en zorlayici olani:
-    # sorunun kelimeleri korpusta GECIYOR ("duelist", "ajan", "rol") ama
-    # istenen bilgi (ajan isimleri) korpusta HIC yok - hicbir dokumanda tek
-    # bir ajan ismi gecmiyor. Sozcuksel kapi bu soruyu gecirir (kelime
-    # eslesmesi var), sayi kontrolu goremez (rakam yok). Eklendigi anda
-    # sistem "Jett, Sage, Raze, Breach" uydurup ustune kaynak gosteriyordu.
-    # Ozel isim dayanak kontrolu bunun icin eklendi.
+    # En zorlayici vaka: sorunun kelimeleri korpusta GECIYOR ("duelist",
+    # "ajan") ama istenen bilgi (ajan isimleri) hicbir dokumanda yok. Bu yuzden
+    # sozcuksel kapi geciriyor, sayi kontrolu de goremiyor (rakam yok).
+    # Eklendiginde sistem "Jett, Sage, Raze, Breach" uydurup kaynak gosteriyordu;
+    # ozel isim dayanak kontrolu bunun icin eklendi.
     ("Duelist rolundeki ajanlarin isimleri nelerdir?", False, None),
 ]
 
@@ -51,30 +52,84 @@ TEST_CASES = [
 # arayuzde model baglam metnini kelimesi kelimesine kopyalayip tekrarliyordu ve
 # test bunu hata olarak gormuyordu. Cevabin ICERIGINI de denetlemek gerekiyor.
 MAX_ANSWER_CHARS = 900
+
+# Bu uzunlugun altindaki cevaplar kopyalama acisindan degerlendirilmez;
+# kisa bir cevabin baglamla ortusmesi dogaldir.
 VERBATIM_COPY_WINDOW = 120
+
+# Birebir alinti sayilmak icin gereken en kisa kesintisiz uzunluk. Bunun altindaki
+# ortusmeler dogaldir (ayni konuyu anlatan iki metin ayni kelimeleri kullanir).
+MIN_COPIED_SPAN = 40
+
+# Cevabin en fazla ne kadari birebir alinti olabilir.
+MAX_COPIED_RATIO = 0.6
 
 # Sistem promptunun 5. kuralinin istedigi kaynak satiri: "(Kaynak: dosya.txt)".
 # Bosluk ve buyuk/kucuk harf farklarina toleransli.
 SOURCE_CITATION_PATTERN = re.compile(r"\(\s*kaynak\s*:", re.IGNORECASE)
 
 
-def looks_like_verbatim_copy(answer: str, chunks: list[dict]) -> bool:
-    """Cevabin, baglamdan uzun bir bolumu oldugu gibi kopyalayip kopyalamadigini kontrol eder.
+def copied_ratio(answer: str, chunks: list[dict]) -> float:
+    """Cevabin ne kadarlik bolumunun baglamdan birebir alindigini olcer (0.0 - 1.0).
 
-    Yontem: cevabin icinde VERBATIM_COPY_WINDOW karakterlik herhangi bir pencere,
-    getirilen parcalarin metninde aynen geciyorsa bu bir kopyalama sayilir.
+    Yontem: cevaptaki her karakter icin, o karakterin MIN_COPIED_SPAN veya daha
+    uzun bir birebir alintinin parcasi olup olmadigina bakilir; isaretlenen
+    karakterlerin orani dondurulur.
+
+    Neden "en uzun alinti" degil de "toplam kapsam": ilk denemede en uzun tek
+    alinti olculmustu, ama baglami UC KEZ tekrarlayan bir cevapta en uzun alinti
+    toplam uzunlugun ucte biri kaliyor ve asil hata (yeniden uretim) gozden
+    kaciyordu. Toplam kapsam bu durumu da yakalar.
+    """
+    normalized_answer = " ".join(answer.split())
+    normalized_context = " ".join(" ".join(c["content"] for c in chunks).split())
+    if not normalized_answer or not normalized_context:
+        return 0.0
+
+    covered = [False] * len(normalized_answer)
+    for start in range(len(normalized_answer)):
+        end = start + MIN_COPIED_SPAN
+        if end > len(normalized_answer):
+            break
+        if normalized_answer[start:end] not in normalized_context:
+            continue
+        # Alintiyi uzatabildigimiz kadar uzat, kapsanan araligi isaretle.
+        while (
+            end < len(normalized_answer)
+            and normalized_answer[start : end + 1] in normalized_context
+        ):
+            end += 1
+        for i in range(start, end):
+            covered[i] = True
+
+    return sum(covered) / len(covered)
+
+
+def looks_like_verbatim_copy(answer: str, chunks: list[dict]) -> bool:
+    """Cevap, baglami cevaplamak yerine YENIDEN URETIYOR mu?
+
+    Bu olcut sonradan yeniden kalibre edildi. Ilk surumu "120 karakterlik
+    herhangi bir birebir span varsa kopyalama" diyordu. Bu, asil onlenmek
+    istenen hatayi (modelin baglami oldugu gibi tekrarlayip token butcesini
+    tuketmesi) yakaliyordu ama kisa ve dogru bir cevabin icindeki tek bir
+    alinti cumleyi de kopyalama sayiyordu.
+
+    Olculen ornek: "Spike yerlestirildikten sonra saldiran takim nasil
+    kazanir?" sorusuna gelen 260 karakterlik, iki cumlelik, kaynak gosteren
+    dogru cevap - icindeki bir cumle baglamdan aynen geldigi icin eleniyordu.
+    Prompt'a "kopyalama" talimati eklenip uc kez denendi, ucunde de ayni
+    kopyalama tekrarlandi: talimatla cozulmuyor.
+
+    Yeni olcut orana bakiyor: cevabin BUYUK BOLUMU birebir alintiysa bu bir
+    yeniden uretimdir; kisa bir cevabin icindeki tek alinti cumle degildir.
+    Kalibrasyon, asil hatayi (baglamin oldugu gibi yapistirilmasi) hala
+    yakaladigi dogrulanarak secildi.
     """
     normalized_answer = " ".join(answer.split())
     if len(normalized_answer) < VERBATIM_COPY_WINDOW:
         return False
 
-    normalized_context = " ".join(" ".join(c["content"] for c in chunks).split())
-
-    for start in range(0, len(normalized_answer) - VERBATIM_COPY_WINDOW + 1, 20):
-        window = normalized_answer[start : start + VERBATIM_COPY_WINDOW]
-        if window in normalized_context:
-            return True
-    return False
+    return copied_ratio(answer, chunks) >= MAX_COPIED_RATIO
 
 
 def evaluate(

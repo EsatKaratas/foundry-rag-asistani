@@ -1,20 +1,23 @@
-# Yerel RAG Doküman Asistanı — Valorant Bilgi Asistanı
+# Valorant Bilgi Asistanı
 
 Microsoft Foundry Local, SQLite ve RAG (Retrieval-Augmented Generation) deseni kullanan,
-tamamen çevrimdışı çalışan bir soru-cevap asistanı. Kullanıcının kendi dokümanlarına
-dayanarak soru cevaplar; internet bağlantısı veya bulut hesabı gerektirmez.
+**tamamen çevrimdışı** çalışan bir soru-cevap asistanı. Valorant hakkındaki 10 dokümana
+dayanarak soru cevaplar; internet bağlantısı, bulut hesabı veya API anahtarı
+gerektirmez, veri cihazdan çıkmaz.
 
-Bu projede bilgi tabanı olarak **Valorant** oyunu hakkında hazırlanmış dokümanlar
-kullanılıyor (oyun temelleri, ajan rolleri, ekonomi sistemi, silah kategorileri,
-harita yapısı, yeni başlayan rehberi). Bilgi tabanını değiştirmek için `data/`
-klasöründeki `.txt` dosyalarını değiştirip `python ingest.py` çalıştırmak yeterli.
+Projenin asıl konusu şu: **dokümanlarda cevabı olmayan bir soru sorulduğunda ne
+oluyor?** Sıradan bir RAG kurgusu bu durumda uydurmaya başlar. Bu asistan, cevap
+üretmeden önce üç, ürettikten sonra iki kapıdan geçiriyor ve bu kapıların çoğu
+modele hiç soru sormadan, kodla karar veriyor. Her kapının teste ne kattığı
+[ölçülerek gösterildi](#ablasyon-çalışması-her-katman-gerçekten-gerekli-mi):
+savunmasız bir RAG, cevaplanamaz 4 sorudan 3'üne uydurma cevap veriyor.
 
-**Arayüz özellikleri:** sohbet geçmişi (oturum boyunca önceki sorular korunur),
-cevabın token token akması (streaming) ve **karar izi paneli** — her cevabın altında
-boru hattının hangi kapıda ne karar verdiği, gerekçesiyle birlikte görünür.
+**Arayüz:** sohbet geçmişi, token token akan cevaplar (streaming) ve her cevabın
+altında **karar izi paneli** — boru hattının hangi kapıda ne karar verdiği,
+gerekçesiyle birlikte görünüyor.
 
-Bu proje, Microsoft'un yaz stajı/yaz okulu programı kapsamında, "Building Your First
-Local RAG Application with Foundry Local" referans dokümanına göre geliştirilmiştir.
+Bilgi tabanını değiştirmek için `data/` klasöründeki `.txt` dosyalarını değiştirip
+`python ingest.py` çalıştırmak yeterli.
 
 ## Mimari
 
@@ -94,73 +97,83 @@ klasörüne `.txt` dosyaları koyup `python ingest.py`'ı tekrar çalıştırmak
 | `app.py` | Streamlit arayüzü + LLM entegrasyonu (RAG'ın "generate" adımı) |
 | `test_qa.py` | Fonksiyonel test seti — cevaplanabilir/cevaplanamaz sorularla doğrulama |
 | `ablation.py` | Ablasyon çalışması — her savunma katmanının katkısını ölçer |
-| `data/` | Kaynak dokümanlar (.txt) |
+| `data/` | Bilgi tabanı — 10 Valorant dokümanı (.txt) |
 | `TEST_RESULTS.md` | Son test koşusunun sonuçları (otomatik üretilir) |
 | `ABLATION_RESULTS.md` | Ablasyon çalışmasının sonuçları (otomatik üretilir) |
 
-## En değerli bulgu: popüler bir konuya geçince ne değişti
+## Tasarım İlkesi: kesin hesaplanabilen şeyi modele sorma
 
-Bilgi tabanı yaz okulu dokümanlarından **Valorant**'a çevrildiğinde, daha önce
-9/9 geçen sistem 7/9'a düştü. Sebep tek bir hata değil, RAG'in temel bir
-zorluğuydu:
+Bu projenin bütün savunma katmanları tek bir ilkeden çıktı. İlke, üç ayrı
+denemenin ölçülerek başarısız olmasından sonra benimsendi.
 
-**1. Kosinüs eşiği korpusa bağımlıymış.** Karışık konulu bir doküman setinde
-(her dosya farklı konu) 0.50 eşiği çalışıyordu. Ama tüm dokümanlar tek bir konu
-hakkında olduğunda, kosinüs skoru artık "bu parça soruyu cevaplıyor mu"yu değil
-sadece "bu metin Valorant hakkında mı"yı ölçüyor. Dokümanlarda cevabı olmayan
-sorular bile 0.53-0.60 skorluyordu.
+**Popüler bir konu, RAG'i özellikle zorluyor.** Valorant yaygın bilinen bir oyun
+olduğu için model, bağlamda olmayan bilgiyi kendi eğitim verisinden verebiliyor:
+*"Valorant 2020'de çıktı"* — doğru bilgi, ama bu dokümanlarda yok. Sıradan bir
+RAG kurgusunda bunu ayırt etmenin hiçbir yolu yoktur; cevap doğru göründüğü için
+gözden kaçar.
 
-**2. Model konuyu zaten biliyordu.** Yaz okulu dokümanlarında bu sorun yoktu
-çünkü model o programı hiç bilmiyordu. Valorant popüler bir oyun olduğu için
-model, bağlamda olmayan bilgiyi kendi eğitim verisinden verebiliyordu
-("Valorant 2020'de çıktı" — doğru bilgi, ama bizim dokümanlarımızda yok).
+**Kosinüs eşiği tek başına yetmiyor, çünkü korpusa bağımlı.** Tüm dokümanlar tek
+bir konu hakkında olduğunda kosinüs skoru artık *"bu parça soruyu cevaplıyor
+mu"*yu değil *"bu metin Valorant hakkında mı"*yı ölçer. Ölçülen değer:
+dokümanlarda cevabı olmayan sorular bile **0.53 - 0.60** skorluyor. Bu yüzden
+üst eşik 0.50'den 0.75'e çekildi — ama asıl çözüm eşiği oynatmak değildi.
 
-**3. Modelin kendi halüsinasyonunu kendisine denetletmek işe yaramadı.** Üretim
-sonrası bir "dayanak kontrolü" (groundedness check) eklendi: *"cevaptaki bilgi
-bağlamda geçiyor mu?"* Sonuç: model kendi ürettiği yanlış cevabı **"evet,
-dayanaklı"** diye onayladı. Sebebi açık — o bilgiyi bağımsız olarak "bildiği"
-için kontrol katmanı da aynı yanılgıya düşüyor.
+**Modeli kendi çıktısının hakemi yapmak çalışmadı.** Üretim sonrası bir dayanak
+kontrolü (*"cevaptaki bilgi bağlamda geçiyor mu?"*) üç farklı promptla denendi:
 
-**Çözüm — modelden bağımsız, deterministik doğrulama:** Sayılar (tarih, fiyat,
-adet) halüsinasyonun en sık görüldüğü bilgi tipidir ve modele hiç sormadan,
-kodla kesin olarak kontrol edilebilir. Cevapta bağlamda hiç geçmeyen bir sayı
-varsa cevap reddediliyor. Bu, "2020" hatasını kesin olarak çözdü.
+| Denenen prompt | Sonuç |
+|---|---|
+| "Bilgi bağlamda geçiyor mu?" | Model kendi halüsinasyonunu "dayanaklı" diye onayladı |
+| "Her şey metinde geçiyor mu?" | Geçerli cevapları da eledi |
+| "Uydurma var mı?" | Yeniden ifade edilmiş doğru cevapları uydurma sandı |
 
-**Alınan ders:** LLM tabanlı kontroller olasılıksaldır ve aynı modelin kendi
-hatasını yakalaması beklenemez. Kesin olarak doğrulanabilen şeyler (sayılar,
-tarihler, isimler) kodla kontrol edilmelidir.
+Sebep açık: o bilgiyi bağımsız olarak "bilen" model, kontrol katmanında da aynı
+yanılgıya düşüyor. LLM tabanlı kontroller olasılıksaldır ve aynı modelin kendi
+hatasını yakalaması beklenemez.
+
+**Benimsenen ilke:** kesin olarak hesaplanabilen hiçbir şey modelden istenmez.
+Bu ilke sistemde dört ayrı yerde uygulandı — sayı doğrulaması, özel isim
+dayanağı, sözcüksel kapı ve cevap uzunluğu — ve hepsi aşağıda ayrı ayrı
+açıklanıyor. LLM yalnızca gri bölgedeki alaka kararında kullanılıyor, çünkü
+orada kesin bir ölçüt yok.
 
 ## Test Sonuçları
 
-`data/` klasörü Valorant hakkında 6 doküman içeriyor. `python test_qa.py` ile
-10 soruluk bir ana test seti (6 cevaplanabilir + 4 cevaplanamaz) ve ayrıca 3 uç
-durum vakası çalıştırıldı:
+`data/` klasörü Valorant hakkında **10 doküman** (53 parça) içeriyor.
+`python test_qa.py` ile 14 soruluk bir ana test seti (10 cevaplanabilir +
+4 cevaplanamaz) ve ayrıca 3 uç durum vakası çalıştırılıyor:
 
-- **10 / 10 ana test geçti** — 4 ardışık koşuda kararlı
+- **14 / 14 ana test geçti**
 - **3 / 3 uç durum testi geçti** (boş sorgu, yalnızca boşluk, çok genel soru)
-- **Ortalama süre: 1.43 saniye/soru** (temiz sunucu durumunda ölçüldü) — referans
-  dokümanın hedeflediği 1-3 saniye aralığının içinde. Cevaplanamaz soruların çoğu
-  **0.06 saniyede** reddediliyor, çünkü sözcüksel kapı hiçbir LLM çağrısı yapmadan
-  karar veriyor.
+- **Ortalama süre: ~1.5 saniye/soru** (temiz sunucu durumunda ölçüldü), hedeflenen
+  1-3 saniye aralığının içinde. Cevaplanamaz soruların çoğu **0.07 saniyede**
+  reddediliyor, çünkü sözcüksel kapı hiçbir LLM çağrısı yapmadan karar veriyor.
+
+Test seti yalnızca "cevap üretildi mi" diye bakmıyor; cevaplanabilir sorularda
+**cevabın içeriğini de** denetliyor: uzunluk sınırı, bağlamın birebir kopyalanıp
+kopyalanmadığı ve kaynak satırının bulunup bulunmadığı. Bu kontroller şu yüzden var: testler
+tamamen geçerken arayüzde modelin bağlam metnini kelimesi kelimesine tekrarladığı
+fark edildi — test yalnızca "cevap üretildi mi" diye baktığı için bunu hata
+saymıyordu.
+
+**Kopyalama ölçütü nasıl kalibre edildi:** İlk sürüm *"cevapta 120 karakterlik
+birebir bir bölüm varsa kopyalamadır"* diyordu. Yeni dokümanlar eklenince bu ölçüt
+tetiklendi ve incelendiğinde iki şey ortaya çıktı. Birincisi, ölçütün kendisi
+kusurluydu: bağlamı üç kez tekrarlayan bir cevapta en uzun birebir bölüm toplam
+uzunluğun üçte biri kalıyor ve **asıl önlenmek istenen hata gözden kaçıyordu**.
+Ölçüt "en uzun alıntı" yerine **toplam kapsanan oran** olarak yeniden yazıldı ve
+üç yeniden-üretim biçiminin de yakalandığı doğrulandı. İkincisi, model gerçekten
+kopyalıyordu: cevabın %83'ü birebir alıntıydı. Prompt'a "kopyalama" talimatı
+eklenip üç kez denendi, **üçünde de aynı çıktı geldi** — talimatla çözülmüyor.
+Model çıkarımda (extraction) iyi, sentezde zayıf; cevabı tek bir kaynak cümlesinde
+duran sorularda neredeyse birebir alıntı üretiyor.
 
 **Uç durumlar neden ayrı bölümde:** bu girdiler için "doğru cevap" tek bir şey
-değil; referans plan yalnızca sistemin bunları sağlıklı karşılamasını istiyor,
-belirli bir cevap şart koşmuyor. Ölçüt: **çökmedi + makul cevap döndü**. Ana sete
-"bilmiyorum demeli" beklentisiyle konsalardı, "Bana her şeyi anlat" gibi genel bir
-soru 0.30-0.75 gri bölgesine düşüp alaka denetleyicisine gider ve GPU çıkarımı tam
-deterministik olmadığı için sonuç koşudan koşuya değişebilirdi.
-
-**Uzun süre çözülemeyen sınır durum ve nasıl çözüldüğü:** "Valorant turnuvalarında
-ödül havuzu ne kadar?" sorusuna sistem uzunca bir süre "bilmiyorum" demek yerine
-oyun içi ekonomi sistemini anlatıyordu. Bu bir **halüsinasyon değildi** — verilen
-bilgi doğruydu ve dokümanlarda gerçekten vardı. Sorun, sorulan sorunun değil
-semantik olarak yakın başka bir sorunun cevaplanmasıydı (**konu kayması**).
-
-Bu hata ne eşik ayarıyla ne de alaka denetleyicisiyle çözülebiliyordu, çünkü ikisi
-de aynı şeye bakıyor: anlamsal yakınlık. Çözüm bu yüzden farklı bir sinyalden geldi
-— aşağıdaki **sözcüksel kapı** bölümüne bakın. Ölçüm: "turnuva" ve "ödül"
-kelimeleri korpusta **hiç geçmiyor**, dolayısıyla getirilen metin bu soruyu
-cevaplıyor olamaz. Bu kapı eklendikten sonra test 9/9'a çıktı.
+değil; beklenen davranış sistemin bunları sağlıklı karşılaması. Ölçüt: **çökmedi +
+makul cevap döndü**. Ana sete "bilmiyorum demeli" beklentisiyle konsalardı,
+"Bana her şeyi anlat" gibi genel bir soru 0.30-0.75 gri bölgesine düşüp alaka
+denetleyicisine gider ve GPU çıkarımı tam deterministik olmadığı için sonuç
+koşudan koşuya değişebilirdi.
 
 Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
 
@@ -172,21 +185,21 @@ katmanı tek tek kapatıp testi yeniden koşar:
 
 | Yapılandırma | Ana test | Katkısı |
 |---|---|---|
-| **Tam sistem** | **10/10** | referans |
-| Sözcüksel kapı kapalı | 8/10 | **2 vaka** |
-| Özel isim kontrolü kapalı | 9/10 | **1 vaka** |
-| LLM alaka denetleyicisi kapalı | 10/10 | 0 vaka |
-| Sayı doğrulaması kapalı | 10/10 | 0 vaka |
-| Kosinüs eşiği kapalı | 10/10 | 0 vaka |
-| **Çıplak RAG** (hiç savunma yok) | **6/10** | **4 vaka** |
+| **Tam sistem** | **14/14** | referans |
+| Sözcüksel kapı kapalı | 13/14 | **1 vaka** |
+| Özel isim kontrolü kapalı | 13/14 | **1 vaka** |
+| LLM alaka denetleyicisi kapalı | 14/14 | 0 vaka |
+| Sayı doğrulaması kapalı | 14/14 | 0 vaka |
+| Kosinüs eşiği kapalı | 14/14 | 0 vaka |
+| **Çıplak RAG** (hiç savunma yok) | **11/14** | **3 vaka** |
 
 Üç sonuç çıkıyor:
 
-**1. Çıplak RAG 10 sorudan 4'ünü kaybediyor.** Referans tutorial'daki "getir + üret"
-kurgusu, dokümanlarda cevabı olmayan her soruya uydurma cevap veriyor. Savunma
+**1. Çıplak RAG, cevaplanamaz 4 sorudan 3'ünü kaybediyor.** Sade "getir + üret"
+kurgusu, dokümanlarda cevabı olmayan sorulara uydurma cevap veriyor. Savunma
 katmanları bu projenin süsü değil, çalışmasının şartı.
 
-**2. İki deterministik katman tek başına 3 vaka kurtarıyor.** Sözcüksel kapı ve özel
+**2. İki deterministik katman tek başına 2 vaka kurtarıyor.** Sözcüksel kapı ve özel
 isim kontrolü — ikisi de hiç LLM çağrısı yapmıyor.
 
 **3. Üç katman bu test setinde 0 vaka katıyor.** Bu, "silinmeliler" demek değil;
@@ -261,14 +274,14 @@ geçmeyen özel isimler**. Model paraphrase yaparken yeni özel isim uydurmaz; o
   (`turnuva` → `turnuvalarında`) → tam kelime yerine ilk 5 karakterlik kaba gövde
   karşılaştırılıyor.
 
-  Kapı **tolerelı** tasarlandı: tek eşleşme yeterli. Amaç geçerli soruları elemek
+  Kapı **toleranslı** tasarlandı: tek eşleşme yeterli. Amaç geçerli soruları elemek
   değil, hiçbir sözcüksel dayanağı olmayanları yakalamak. Sorunun hiç ayırt edici
   kelimesi yoksa ("Bana her şeyi anlat") kapı karar veremez ve geçirir.
-  Entegrasyondan önce 6 cevaplanabilir + 3 cevaplanamaz soruya karşı ayrı ayrı
-  ölçüldü: **0 yanlış eleme**, 3 cevaplanamaz sorunun 3'ü de elendi.
+  Entegrasyondan önce tüm test sorularına karşı ayrı ayrı ölçüldü: **0 yanlış
+  eleme**, cevaplanamaz soruların hepsi elendi.
 
-  İki kazanç: test 8/9 → **9/9**, ve kapı LLM çağrısından önce çalıştığı için
-  cevaplanamaz sorular **2.1 saniye yerine 0.06 saniyede** reddediliyor.
+  Kapı LLM çağrısından önce çalıştığı için ek bir kazanç da hız: cevaplanamaz
+  sorular saniyeler yerine **0.07 saniyede** reddediliyor.
 
 - **Halüsinasyon karşı önlemi — üç bölgeli alaka kararı:** Sözcüksel kapıyı geçen
   parçalar için karar şöyle veriliyor:
@@ -298,7 +311,7 @@ geçmeyen özel isimler**. Model paraphrase yaparken yeni özel isim uydurmaz; o
 - **Kaynak gösterimi de deterministik:** Sistem promptunun 5. kuralı modelden cevabın
   sonuna `(Kaynak: dosya.txt)` satırını eklemesini istiyor. Teste bu kural için bir
   doğrulama eklendiğinde ölçüldü ki **model bunu cevapların yaklaşık üçte birinde
-  atlıyor** (6 cevaplanabilir sorudan 2'sinde). Kaynak dosya adı retrieval aşamasından
+  atlıyor** (o ölçümde 6 cevaplanabilir sorudan 2'sinde). Kaynak dosya adı retrieval aşamasından
   zaten elimizde olduğu için, satır eksikse kodla ekleniyor
   (`ensure_source_citation`). Prompt kuralı yine duruyor; model kendiliğinden doğru
   yazdığında bu fonksiyon hiçbir şey yapmıyor. Aynı ilke: kesin bilinen bir bilgi
@@ -359,6 +372,28 @@ gösteriyor: skor **0.598** ile gayet "alakalı" görünüyor, ama sorulan kelim
 hiçbiri metinde yok. Panel ayrıca hangi kararların **hiç LLM çağrısı yapmadan**
 verildiğini de görünür kılıyor.
 
+## "Bilmiyorum" Neden Bilmiyorum
+
+Kullanıcı açısından "Bu bilgi elimdeki dokümanlarda yok" tek başına çıkmaz
+sokaktır: sorusunun mu yanlış anlaşıldığını, yoksa bilginin gerçekten mi
+olmadığını ayırt edemez. Sözcüksel kapı bu farkı zaten hesaplıyor — o bilgi
+kullanıcıya da veriliyor:
+
+```
+Soru: "Valorant turnuvalarında ödül havuzu ne kadar?"
+  Bu bilgi elimdeki dokumanlarda yok.
+  Şu kelimeler dokümanlarda hiç geçmiyor: "turnuvalarinda", "odul"
+  — bu konu bilgi tabanında yok.
+```
+
+Bu not yalnızca **sözcüksel kapının reddettiği** durumlarda çıkıyor; diğer
+kapıların reddi farklı bir sebebe dayanır ve orada eksik kelime listesi
+yanıltıcı olurdu. Cevabın kendisi değişmiyor, bu sadece altına eklenen bir açıklama.
+
+Aynı mantığın görsel karşılığı kaynak panelinde: sözcüksel kapının eşleştirdiği
+kelimeler doküman metni içinde **vurgulanıyor**. Kararı okumak yerine, kararın
+dayandığı kelimeler metnin içinde doğrudan görülüyor.
+
 ## İşletim Notu — GPU belleği ve süre ölçümü
 
 Foundry Local arka arkaya çok istek aldığında GPU belleğini biriktiriyor ve üretim
@@ -385,9 +420,7 @@ foundry model load qwen3-4b
 
 ## Kaynaklar
 
-Bu proje, Microsoft yaz okulu programının referans planına ("One-Month Project Plan:
-Local RAG AI Assistant with Microsoft Foundry Local") göre geliştirildi. Planın
-işaret ettiği kaynaklar:
+Projede takip edilen kaynaklar:
 
 **Ana referans (topluluk içeriği):**
 - [Building Your First Local RAG Application with Foundry Local](https://techcommunity.microsoft.com/blog/azuredevcommunityblog/building-your-first-local-rag-application-with-foundry-local/4501968)

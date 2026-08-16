@@ -19,6 +19,8 @@ from common import CHAT_MODEL, DB_PATH, EMBED_MODEL, get_client
 from lexical_gate import (
     has_lexical_support,
     lexical_support_detail,
+    matched_spans,
+    missing_from_corpus,
     ungrounded_proper_nouns,
 )
 from retrieval import get_top_chunks
@@ -157,18 +159,10 @@ ANSWER_UNIT_PATTERN = re.compile(r"(?<=[.!?])\s+|\n+")
 def limit_answer(answer: str) -> str:
     """Cevabi, sistem promptunun soz verdigi sinirlara kodla indirger.
 
-    NEDEN: Sistem promptunun 1. kurali "en fazla 3 cumle" diyor, ama bu bir
-    TALEP - garanti degil. Belirsiz sorularda model kurali gormezden gelip
-    1000-1300 karakterlik metinler uretebiliyor (olculdu, kosudan kosuya
-    degisiyor). Bu, cevap uzunlugunu ongorulemez hale getiriyordu.
-
-    Projedeki genel ilke: sistemin verdigi soz kesin olarak dogrulanabiliyorsa
-    modelden rica edilmez, kodla saglanir. Ayni sebeple sayilar, ozel isimler
-    ve kaynak satiri da kodla denetleniyor.
-
-    Iki sinir birlikte uygulanir - biri digerinin kacirdigini yakalar:
-      1. En fazla MAX_SENTENCES birim (cumle ya da madde satiri)
-      2. En fazla MAX_ANSWER_CHARS karakter (birim sinirinda kesilir)
+    Promptun "en fazla 3 cumle" kurali bir talep, garanti degil: belirsiz
+    sorularda model 1000-1300 karakter uretebiliyordu (olculdu). Iki sinir
+    birlikte uygulanir - biri digerinin kacirdigini yakalar: en fazla
+    MAX_SENTENCES birim (cumle ya da madde satiri) ve MAX_ANSWER_CHARS karakter.
     """
     if answer.strip() in (NO_INFO_MESSAGE, FALLBACK_MESSAGE):
         return answer
@@ -193,15 +187,10 @@ def limit_answer(answer: str) -> str:
 def ensure_source_citation(answer: str, chunks: list[dict]) -> str:
     """Cevabin sonunda kaynak satiri yoksa, kullanilan parcalardan uretip ekler.
 
-    Neden kodla: sistem promptunun 5. kurali modelden "(Kaynak: dosya.txt)"
-    satirini istiyor, ama olculdugunde model bunu cevaplarin yaklasik ucte
-    birinde atliyordu (6 cevaplanabilir sorudan 2'sinde). Kaynak dosya adi
-    retrieval asamasindan zaten elimizde oldugu icin bunu modele birakmak
-    gereksiz; projenin genelindeki karar burada da uygulaniyor: kesin
-    bilinen bir bilgi modelden istenmez, kodla yazilir.
-
-    Prompt kurali yine de duruyor - model kendiliginden dogru yazdiginda
-    bu fonksiyon hicbir sey yapmaz.
+    Promptun 5. kurali bu satiri modelden istiyor ama model bunu cevaplarin
+    yaklasik ucte birinde atliyordu (olculdu: 6 soruda 2). Dosya adi retrieval
+    asamasindan zaten bilindigi icin modelden istemeye gerek yok. Model dogru
+    yazdiginda bu fonksiyon hicbir sey yapmaz.
     """
     if not chunks:
         return answer
@@ -230,18 +219,11 @@ def has_ungrounded_numbers(context: str, answer: str) -> bool:
 def is_answer_grounded(client, context: str, answer: str) -> bool:
     """Uretilen cevabin baglamdaki bilgiye dayanip dayanmadigini dogrular.
 
-    ONEMLI TASARIM KARARI: Bu kontrol yalnizca DETERMINISTIK (kodla yapilan)
-    bir dogrulama icerir. LLM'e "bu cevap baglamla uyumlu mu" diye sormayi da
-    denedik ve iki yonde de guvenilmez oldugunu OLCTUK:
-      - "cevaptaki her sey metinde geciyor mu?" diye sorulunca model, gecerli
-        cevaplari da eledi (test 8/9 -> gecerli sorularda hatali ret).
-      - "uydurma bilgi var mi?" diye sorulunca bu sefer paraphrase edilmis
-        gecerli cevaplari uydurma sandi (test 8/9 -> 4/9'a dustu).
-      - Ayrica model, kendi urettigi bir halusinasyonu ("Valorant 2020'de cikti")
-        "dayanakli" diye onaylayabildi.
-    Yani ayni kucuk modeli kendi ciktisinin hakemi yapmak calismiyor. Bu yuzden
-    LLM tabanli kontrol tamamen kaldirildi; yerine kesin dogrulanabilen bir
-    olcut birakildi.
+    Yalnizca deterministik kontroller icerir. LLM'e "bu cevap baglamla uyumlu
+    mu" diye sormak uc farkli prompt ile denendi ve ucunde de basarisiz oldu:
+    model bir seferinde kendi halusinasyonunu onayladi, digerlerinde gecerli
+    cevaplari eledi (testler 8/9 -> 4/9). Ayni modeli kendi ciktisinin hakemi
+    yapmak calismiyor; kesin hesaplanabilen olcutler kullaniliyor.
     """
     # Zaten "bilmiyorum" diyorsak dogrulamaya gerek yok.
     if answer.strip() in (NO_INFO_MESSAGE, FALLBACK_MESSAGE):
@@ -309,14 +291,10 @@ def retrieve_and_gate(question: str, k: int = 3, trace: list | None = None):
     Doner: (system_prompt, kullanilan_parcalar, red_mesaji, baglam_metni)
     red_mesaji None degilse hicbir uretim yapilmamalidir.
     """
-    # 0. Kapi: bos / yalnizca bosluk iceren sorgu.
-    # Bu kontrol olmadan sorgu dogrudan embedding API'sine gidiyor ve Foundry
-    # Local bos girdiyi reddedip HTTP 400 donuyordu (olculdu:
-    # "Embedding input at index 0 is null, empty..."), bu da yakalanmayan bir
-    # exception olarak uygulamayi cokertiyordu. Arayuzden tetiklenmiyor cunku
-    # st.chat_input bos girdiyi gondermiyor; ancak fonksiyon dogrudan
-    # cagrildiginda (test, betik, ileride eklenecek bir API) cokuyordu.
-    # Kontrol answer_query yerine burada: hem akissiz hem akisli yol buradan gecer.
+    # 0. Kapi: bos sorgu. Bu kontrol olmadan sorgu dogrudan embedding API'sine
+    # gidiyor ve Foundry Local HTTP 400 donuyordu ("Embedding input at index 0
+    # is null, empty..."); yakalanmayan exception uygulamayi cokertiyordu.
+    # Kontrol burada, cunku hem akissiz hem akisli yol buradan geciyor.
     if not question or not question.strip():
         _log(trace, "0. Boş sorgu", False, "sorgu boş — hiçbir işlem yapılmadı")
         return None, [], NO_INFO_MESSAGE, ""
@@ -352,14 +330,9 @@ def retrieve_and_gate(question: str, k: int = 3, trace: list | None = None):
         f"{chunks[0]['score']:.3f} ≥ {SIMILARITY_THRESHOLD}",
     )
 
-    # 2. Kapi (sozcuksel): kosinus benzerliginin yapisal olarak goremedigi
-    # hatayi yakalar. Sorunun ayirt edici kelimelerinden hicbiri getirilen
-    # metinde gecmiyorsa, o metin bu soruyu cevapliyor olamaz.
-    # Olculen ornek: "Valorant turnuvalarinda odul havuzu ne kadar?" - "turnuva"
-    # ve "odul" korpusta hic gecmiyor, ama embedding bunu oyun ici ekonomiye
-    # yakin buluyordu ve sistem yanlis soruyu cevapliyordu (konu kaymasi).
-    # Deterministik ve LLM cagrisindan ONCE calisiyor: hem daha guvenilir hem
-    # daha hizli. Ayrinti: lexical_gate.py
+    # 2. Kapi (sozcuksel): kosinus benzerliginin goremedigi konu kaymasini
+    # yakalar. Deterministik ve LLM cagrisindan once calisiyor - hem daha
+    # guvenilir hem daha hizli. Ayrinti ve olcum: lexical_gate.py
     if ENABLE_LEXICAL_GATE:
         retrieved_text = "\n".join(chunk["content"] for chunk in chunks)
         supported, stems, matched = lexical_support_detail(question, retrieved_text)
@@ -441,19 +414,15 @@ def answer_query(question: str, k: int = 3) -> tuple[str, list[dict]]:
 
 
 def stream_generation(system_prompt: str, question: str):
-    """Cevabi parca parca (token token) ureten akisli surum - arayuz bunu kullanir.
+    """Cevabi token token ureten akisli surum - arayuz bunu kullanir.
 
-    Bir generator dondurur; Streamlit'in st.write_stream fonksiyonu bunu okuyup
-    ekrana yazarken kullaniciya cevap yaziliyormus gibi gorunur.
+    Teknik zorluk: model cevaptan once <think> blogu uretiyor ve bu blok
+    kullaniciya gosterilmemeli. Metin parca parca geldigi icin, </think>
+    etiketi gorulene kadar gelen parcalar biriktirilip bastirilmiyor.
 
-    Teknik zorluk: model cevaptan once <think>...</think> blogu uretiyor ve bu
-    blok kullaniciya GOSTERILMEMELI. Akissiz surumde tum metin geldikten sonra
-    regex ile temizlemek mumkundu; akisli surumde ise metin parca parca geldigi
-    icin, </think> etiketi gorulene kadar gelen parcalari biriktirip bastirmiyoruz.
-
-    Not: retrieval ve alaka denetimi burada YAPILMAZ; cagiran taraf bunlari
-    onceden yapip hazir system_prompt'u verir. Boylece (maliyetli) alaka
-    denetleyicisi soru basina yalnizca bir kez calisir.
+    Retrieval ve alaka denetimi burada yapilmaz; cagiran taraf hazir
+    system_prompt'u verir, boylece maliyetli denetleyici soru basina bir kez
+    calisir.
     """
     client = get_client()
     stream = client.chat.completions.create(
@@ -522,6 +491,33 @@ def stream_generation(system_prompt: str, question: str):
         yield FALLBACK_MESSAGE
 
 
+def rejection_hint(question: str, trace: list[dict]) -> str:
+    """Reddedilen bir soru icin kullaniciya somut ipucu uretir.
+
+    "Bilmiyorum" tek basina cikmaz sokaktir: kullanici sorusunun mu yanlis
+    anlasildigini yoksa bilginin gercekten olmadigini mi bilemez. Bu ipucu
+    farki soyluyor - hangi kelimenin bilgi tabaninda hic gecmedigini gosterir.
+
+    Yalnizca sozcuksel kapinin reddettigi durumlarda uretilir; diger kapilarin
+    reddi farkli bir sebebe dayanir ve eksik kelime listesi orada yaniltici
+    olurdu. Cevabin kendisi degismez, bu yalnizca altina eklenen bir not.
+    """
+    rejected_by_lexical = any(
+        step["kapi"].startswith("2.") and step["gecti"] is False for step in trace
+    )
+    if not rejected_by_lexical:
+        return ""
+
+    missing = missing_from_corpus(question)
+    if not missing:
+        return ""
+    return (
+        "Şu kelimeler dokümanlarda hiç geçmiyor: "
+        + ", ".join(f"“{word}”" for word in missing)
+        + " — bu konu bilgi tabanında yok."
+    )
+
+
 def render_trace(trace: list[dict]) -> None:
     """Boru hattinin karar izini gosterir.
 
@@ -544,7 +540,30 @@ def render_trace(trace: list[dict]) -> None:
             )
 
 
-def render_sources(chunks: list[dict]) -> None:
+def highlight_matches(text: str, question: str) -> str:
+    """Sorunun ayirt edici kelimeleriyle eslesen yerleri isaretler.
+
+    Sozcuksel kapinin neye bakarak karar verdigi, karari okumak yerine
+    metinde dogrudan gorulebilir hale gelir.
+    """
+    spans = matched_spans(question, text)
+    if not spans:
+        return text
+
+    parts = []
+    cursor = 0
+    for start, end in spans:
+        parts.append(text[cursor:start])
+        parts.append(
+            f"<mark style='background:rgba(15,182,168,0.35);"
+            f"color:inherit;padding:0 2px;border-radius:2px'>{text[start:end]}</mark>"
+        )
+        cursor = end
+    parts.append(text[cursor:])
+    return "".join(parts)
+
+
+def render_sources(chunks: list[dict], question: str = "") -> None:
     """Cevabin dayandigi dokuman parcalarini acilir bir panelde gosterir."""
     if not chunks:
         return
@@ -557,7 +576,11 @@ def render_sources(chunks: list[dict]) -> None:
                 min(max(chunk["score"], 0.0), 1.0),
                 text=f"benzerlik: {chunk['score']:.3f}",
             )
-            st.caption(chunk["content"])
+            st.markdown(
+                "<div style='font-size:0.82rem;opacity:0.85;white-space:pre-wrap'>"
+                f"{highlight_matches(chunk['content'], question)}</div>",
+                unsafe_allow_html=True,
+            )
             if i < len(chunks):
                 st.divider()
 
@@ -756,7 +779,7 @@ def main() -> None:
             st.markdown(message["content"])
             if message["role"] == "assistant":
                 render_trace(message.get("trace", []))
-                render_sources(message.get("chunks", []))
+                render_sources(message.get("chunks", []), message.get("question", ""))
 
     # Soru ya sohbet kutusundan ya da kenar cubugundaki ornek dugmesinden gelir.
     question = st.chat_input("Sorunuzu yazın...")
@@ -789,6 +812,9 @@ def main() -> None:
             # Dokumanlarda cevap yok: hicbir uretim yapmadan mesaji gosteriyoruz.
             answer = refusal
             st.markdown(answer)
+            hint = rejection_hint(question, trace)
+            if hint:
+                st.caption(hint)
         else:
             # Cevabi degistirilebilir bir alana yaziyoruz: akis bittikten sonra
             # dayanak kontrolu basarisiz olursa yazilani silip yerine
@@ -837,7 +863,7 @@ def main() -> None:
                     slot.markdown(answer)
 
         render_trace(trace)
-        render_sources(chunks)
+        render_sources(chunks, question)
 
     # Cevap tamamlandi: soru ve cevabi birlikte gecmise yaziyoruz.
     st.session_state.messages.append(
@@ -849,6 +875,9 @@ def main() -> None:
             "content": answer,
             "chunks": chunks,
             "trace": trace,
+            # Soru saklaniyor ki gecmisteki mesajlarda da kaynak panelindeki
+            # eslesen kelimeler vurgulanabilsin.
+            "question": question,
             "avatar": BOT_AVATAR,
         }
     )

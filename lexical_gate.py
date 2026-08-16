@@ -1,44 +1,23 @@
 """
 lexical_gate.py
 
-Sozcuksel (lexical) alaka kapisi — kosinus benzerliginin yapisal olarak
-goremedigi bir hata turunu deterministik olarak yakalar.
+Sozcuksel alaka kapisi: sorunun ayirt edici kelimelerinden en az biri
+getirilen metinde gecmiyorsa, o metin bu soruyu cevapliyor olamaz.
 
-PROBLEM
--------
-Kosinus benzerligi anlamsal yakinlik olcer. Tek konulu bir korpusta bu,
-"bu parca soruyu cevapliyor mu"yu degil "bu metin ayni konu hakkinda mi"yi
-olcmeye baslar. Olculen gercek ornek:
+Neden gerekli: kosinus benzerligi anlamsal yakinlik olcer ve tek konulu bir
+korpusta "bu metin ayni konu hakkinda mi"yi olcmeye baslar. Olculen ornek:
+"Valorant turnuvalarinda odul havuzu ne kadar?" sorusuna sistem oyun ici
+ekonomiyi anlatiyordu; oysa "turnuva" ve "odul" korpusta hic gecmiyor.
+Embedding bunu goremez, kelime karsilastirmasi gorur (hibrit arama deseni).
 
-    Soru : "Valorant turnuvalarinda odul havuzu ne kadar?"
-    Cevap: (oyun ici ekonomi sistemini anlatiyor)
+"Ayirt edici" tanimi kritik: "valorant" her dokumanda gectigi icin hicbir
+sey ayirt etmez, bu yuzden dokuman frekansi yuksek kelimeler elenir (IDF).
 
-"turnuva" ve "odul" kelimeleri korpusta HIC gecmiyor. Ama embedding
-"turnuva odulu"nu "oyun ici para"ya yakin buluyor, alaka denetleyicisi de
-(kucuk bir model) bunu "alakali" sayabiliyor. Sonuc halusinasyon degil —
-verilen bilgi dogru — ama sorulan soru bu degil (konu kaymasi).
+Turkce icin iki uyarlama: karakter normalizasyonu (dokumanlar Turkce
+karaktersiz, kullanici "görevi" yaziyor) ve kaba govde karsilastirmasi
+(sondan eklemeli dil: "turnuva" -> "turnuvalarinda").
 
-COZUM
------
-Yogun (dense/embedding) aramaya sozcuksel (sparse/lexical) bir kontrol
-ekleniyor; literaturde "hibrit arama" olarak bilinen desen. Fikir basit:
-sorunun AYIRT EDICI kelimelerinden en az biri getirilen metinde gecmiyorsa,
-o metin bu soruyu cevapliyor olamaz.
-
-"Ayirt edici" tanimi onemli. "Valorant" kelimesi her dokumanda geciyor, yani
-hicbir sey ayirt etmiyor — bu yuzden dokuman frekansi (DF) yuksek kelimeler
-elenir. Bu, klasik IDF (ters dokuman frekansi) fikrinin sade bir uygulamasi.
-
-Turkce icin iki uyarlama gerekti:
-  1. Dokumanlar Turkce karaktersiz yazilmis ama kullanici arayuze "görevi"
-     diye yaziyor -> her iki taraf da normalize ediliyor (ö->o, ş->s ...).
-  2. Turkce sondan eklemeli bir dil ("turnuva" -> "turnuvalarinda") ->
-     tam kelime yerine ilk STEM_LEN karakter (kaba govde) karsilastiriliyor.
-
-Bu kapi bilincli olarak DETERMINISTIK: hicbir LLM cagrisi yapmaz. Projedeki
-genel ilkeyle ayni — kesin olarak hesaplanabilen bir sey modele sorulmaz.
-Ek fayda: eleme LLM cagrisindan once yapildigi icin cevaplanamaz sorular
-daha hizli reddediliyor.
+Tamamen deterministik, hicbir LLM cagrisi yapmaz.
 """
 
 import re
@@ -143,6 +122,40 @@ def lexical_support_detail(question: str, context: str) -> tuple[bool, list[str]
     return bool(matched), stems, matched
 
 
+def matched_spans(question: str, text: str) -> list[tuple[int, int]]:
+    """Metinde, sorunun ayirt edici govdeleriyle eslesen kelimelerin araliklari.
+
+    Arayuzdeki kaynak panelinde bu araliklar vurgulaniyor: sozcuksel kapinin
+    neye bakarak karar verdigi, karari okumak yerine metinde gorulebiliyor.
+    Doner: (baslangic, bitis) indeksleri, metindeki sirayla.
+    """
+    stems = set(discriminative_stems(question))
+    if not stems:
+        return []
+
+    spans = []
+    for match in WORD_PATTERN.finditer(_normalize(text)):
+        if _stem(match.group()) in stems:
+            spans.append((match.start(), match.end()))
+    return spans
+
+
+def missing_from_corpus(question: str) -> list[str]:
+    """Sorunun, korpusun TAMAMINDA hic gecmeyen ayirt edici kelimelerini doner.
+
+    Govde degil, kullanicinin yazdigi kelimenin kendisi dondurulur - arayuzde
+    "turnu..." yerine "turnuvalarinda" gostermek icin.
+    """
+    frequency, _ = _document_frequency()
+    missing = []
+    for token in _tokens(question):
+        if len(token) < MIN_TERM_LEN or token in STOPWORDS:
+            continue
+        if _stem(token) not in frequency:
+            missing.append(token)
+    return missing
+
+
 def has_lexical_support(question: str, context: str) -> bool:
     """Sorunun ayirt edici kelimelerinden en az biri baglamda geciyor mu?
 
@@ -171,26 +184,18 @@ CAPITALIZED_PATTERN = re.compile(r"\b([A-ZÇĞİÖŞÜ][\wçğıöşüÇĞİÖŞ
 def ungrounded_proper_nouns(context: str, answer: str) -> list[str]:
     """Cevapta gecen ama baglamda hic gecmeyen ozel isimleri doner.
 
-    NEDEN: Sayi kontrolu (has_ungrounded_numbers) yalnizca rakam iceren
-    halusinasyonlari yakalar. Olculen gercek acik:
+    Sayi kontrolunun goremedigi halusinasyon turu icin. Olculen ornek:
+    "Duelist rolundeki ajanlarin isimleri nelerdir?" sorusuna sistem
+    "Jett, Sage, Raze ve Breach" uydurup ustune kaynak gosteriyordu; korpusta
+    hicbir ajan ismi gecmiyor. Rakam olmadigi icin sayi kontrolu, "duelist"
+    korpusta gectigi icin de sozcuksel kapi bunu yakalayamaz.
 
-        Soru : "Duelist rolundeki ajanlarin isimleri nelerdir?"
-        Cevap: "Jett, Sage, Raze ve Breach'tir. (Kaynak: ajan_rolleri.txt)"
+    Dayanak: model paraphrase yaparken yeni ozel isim uydurmaz; baglamda
+    olmayan bir ozel isim varsa o bilgi baglamdan gelmiyordur.
 
-    Korpusta hicbir ajan ismi gecmiyor. Sozcuksel kapi bu soruyu gecirdi
-    (cunku "duelist" kelimesi korpusta var), sayi kontrolu goremedi (rakam
-    yok), LLM denetleyicisi de yakalayamadi. Sistem uydurdu ve ustune kaynak
-    gostererek halusinasyonu yetkili gosterdi.
-
-    Bu fonksiyon ayni deterministik fikri ozel isimlere genisletiyor: model
-    paraphrase yaparken yeni ozel isim UYDURMAZ; baglamda gecmeyen bir ozel
-    isim gorunuyorsa, o bilgi baglamdan gelmiyor demektir.
-
-    Yanlis pozitifi dusuk tutan iki kural:
-      1. Cumle basindaki kelimeler sayilmaz (her cumle buyuk harfle baslar,
-         ozel isim olduklarini gostermez).
-      2. Karsilastirma normalize edilmis kaba govde uzerinden yapilir; boylece
-         "Duelist'in" ile "Duelist" ayni sayilir.
+    Yanlis pozitifi dusuk tutan iki kural: cumle basindaki kelimeler sayilmaz
+    (buyuk harf ozel isim demek degildir) ve karsilastirma kaba govde uzerinden
+    yapilir ("Duelist'in" ile "Duelist" ayni sayilir).
     """
     context_stems = {_stem(token) for token in _tokens(context)}
 

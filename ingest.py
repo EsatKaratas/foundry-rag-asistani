@@ -21,14 +21,11 @@ from common import DB_PATH, EMBED_MODEL, get_client
 DATA_DIR = Path(__file__).parent / "data"
 
 
-# Chunk boyut sinirlari.
-# MIN_CHUNK_CHARS onemli: bu sinirin altindaki parcalar TEK BASINA birakilmaz.
-# Sebebi (test sirasinda tespit edilen gercek bir hata): ilk surumde bir dokumanin
-# basligi ("Yaz Okulu Programi - Genel Bilgiler" gibi ~35 karakterlik bir satir)
-# tek basina bir parca olarak kaydediliyordu. Bu tur kisa/anlamsiz parcalarin
-# embedding vektoru cok "belirsiz" oluyor ve alakasiz sorular dahil HER SEYE orta
-# seviyede benziyordu. Bu da retrieval skorlarini bozup, dokumanlarda olmayan
-# sorularin yanlislikla "alakali" gorunmesine yol aciyordu.
+# Chunk boyut sinirlari. MIN_CHUNK_CHARS onemli: bu sinirin altindaki parcalar
+# TEK BASINA birakilmaz. Ilk surumde dokuman basligi ("Valorant Ekonomi Sistemi"
+# gibi kisa bir satir) tek basina parca oluyordu; bu tur kisa parcalarin embedding
+# vektoru belirsiz cikiyor ve alakasiz sorular dahil her seye orta seviyede
+# benziyordu, bu da retrieval skorlarini bozuyordu.
 MIN_CHUNK_CHARS = 200
 MAX_CHUNK_CHARS = 500
 
@@ -36,16 +33,11 @@ MAX_CHUNK_CHARS = 500
 def chunk_text(text: str) -> list[str]:
     """Metni paragraflara boler; cok kisa parcalari bir sonrakiyle birlestirir.
 
-    Her parcanin basina dokumanin baslik satiri eklenir ("contextual chunk header").
-    Neden gerekli (test sirasinda olculen gercek bir problem): baslik eklenmediginde
-    yalnizca her dokumanin ILK parcasi basligi iceriyordu. "Yaz okulu programi kac
-    hafta suruyor?" gibi bir soruda, bes dokumanin da baslikli ilk parcasi konu
-    kelimeleriyle esleserek ust siralari doldurdu ve cevabin gercekten bulundugu
-    parca 6. siraya dustu (retrieval basarisiz oldu). Basligi her parcaya ekleyince
-    her parca kendi konu baglamini tasidigi icin bu "baslik yanliligi" ortadan kalkar.
-
-    Garanti: MIN_CHUNK_CHARS altinda tek basina bir parca uretilmez (dokumanin
-    tamami zaten bu sinirin altinda degilse).
+    Her parcanin basina dokumanin baslik satiri eklenir (contextual chunk header).
+    Neden: baslik yalnizca ilk parcada olunca, konu kelimeleri iceren sorularda
+    tum dokumanlarin baslikli ilk parcalari ust siralari dolduruyor ve cevabin
+    gercekten bulundugu parca asagi dusuyordu (olculdu: dogru parca 6. siraya
+    dustu). Baslik her parcaya eklenince bu yanlilik ortadan kalkar.
     """
     raw_parts = [p.strip() for p in text.split("\n\n") if p.strip()]
     if not raw_parts:

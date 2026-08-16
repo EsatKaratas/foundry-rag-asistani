@@ -47,7 +47,7 @@ def get_top_chunks(query: str, k: int = 3) -> list[dict]:
 
 
 if __name__ == "__main__":
-    test_query = "Foundry Local nedir ve neden internete ihtiyac duymaz?"
+    test_query = "Duelist rolunun gorevi nedir?"
     print(f"Soru: {test_query}\n")
 
     results = get_top_chunks(test_query, k=3)

@@ -1,0 +1,15 @@
+Valorant Spike ve Tur Akisi
+
+Valorant'ta her mac, saldiri ve savunma olmak uzere iki taraf uzerinden oynanir. Takimlar belirli sayida turdan sonra taraf degistirir, boylece iki takim da hem saldiriyi hem savunmayi oynar. Bir turu kazanmanin birden fazla yolu vardir ve bu yollar iki taraf icin farklidir.
+
+Spike, saldiran takimin tasidigi patlayici cihazdir. Tur basinda saldiran oyunculardan biri spike'i alir ve takim, haritadaki belirlenmis bolgelerden birine spike'i yerlestirmeye calisir. Spike yerlestirildikten sonra geri sayim baslar; sayim biterse spike patlar ve saldiran takim turu kazanir.
+
+Saldiran takimin turu kazanma yollari: spike'i yerlestirip patlamasini saglamak veya savunan takimin tum oyuncularini etkisiz hale getirmek. Spike yerlestirildikten sonra saldiran takimin tum oyuncularinin olmesi turu otomatik olarak kaybettirmez; spike patlarsa tur yine kazanilir. Bu yuzden yerlestirme sonrasi kalan sure, saldiran takim icin en degerli kaynaktir.
+
+Savunan takimin turu kazanma yollari: saldiran takimin tum oyuncularini spike yerlestirilmeden etkisiz hale getirmek, tur suresinin spike yerlestirilmeden dolmasini saglamak veya yerlestirilen spike'i etkisiz hale getirmek (defuse). Etkisiz hale getirme islemi belirli bir sure alir ve bu sure boyunca oyuncu savunmasizdir; bu yuzden genellikle takim arkadaslarinin koruma saglamasi gerekir.
+
+Etkisiz hale getirme islemi yarida kesilirse ilerleme tamamen sifirlanmaz. Islemin yarisi tamamlandiginda bir kontrol noktasi olusur, oyuncu daha sonra bu noktadan devam edebilir. Bu mekanik, savunan takimin son anda risk alarak islemi baslatmasini anlamli kilar.
+
+Tur akisinin genel sirasi soyledir: alisveris asamasi, engellerin kalkmasi ve haritaya yayilma, bolge kontrolu ve bilgi toplama, saldiri veya savunma icin pozisyon alma, spike ile ilgili karar ani (yerlestirme veya engelleme) ve son olarak yerlestirme sonrasi savunma ya da etkisiz hale getirme mucadelesi.
+
+Zaman yonetimi bu akisin en kritik parcasidir. Saldiran takim icin cok erken davranmak hazirliksiz yakalanmak, cok gec davranmak ise spike'i yerlestirecek sureyi kaybetmek anlamina gelir. Savunan takim icin ise sureyi tuketmek basli basina bir kazanma stratejisidir.

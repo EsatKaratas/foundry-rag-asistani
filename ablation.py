@@ -32,7 +32,7 @@ from test_qa import EDGE_CASES, TEST_CASES, evaluate, evaluate_edge_case
 CONFIGURATIONS = [
     (
         "Tam sistem",
-        "dort savunma katmani da acik",
+        "bes savunma katmani da acik",
         {},
     ),
     (
