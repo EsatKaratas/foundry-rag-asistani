@@ -122,21 +122,6 @@ BAGLAM:
 # Dayanak (groundedness) kontrolu: uretilen cevaptaki bilgi gercekten baglamda
 # geciyor mu? Populer bir konuda model, baglamda olmayan bilgiyi kendi egitim
 # verisinden verebiliyor; bu kontrol onu yakalamak icin.
-GROUNDEDNESS_PROMPT = """/no_think
-Asagida bir METIN ve bu metne dayanarak verildigi iddia edilen bir CEVAP var.
-
-CEVAP'ta gecen bilgilerin tamami METIN'de yaziyor mu?
-
-Sadece tek kelime yaz: EVET veya HAYIR. Baska hicbir sey yazma.
-
-EVET = cevaptaki tum bilgiler metinde bulunuyor.
-HAYIR = cevapta, metinde bulunmayan en az bir bilgi var.
-
-METIN:
-{context}
-
-CEVAP: {answer}"""
-
 
 NUMBER_PATTERN = re.compile(r"\d+")
 
@@ -154,28 +139,26 @@ def has_ungrounded_numbers(context: str, answer: str) -> bool:
 
 
 def is_answer_grounded(client, context: str, answer: str) -> bool:
-    """Uretilen cevabin baglamdaki bilgiye dayanip dayanmadigini dogrular."""
+    """Uretilen cevabin baglamdaki bilgiye dayanip dayanmadigini dogrular.
+
+    ONEMLI TASARIM KARARI: Bu kontrol yalnizca DETERMINISTIK (kodla yapilan)
+    bir dogrulama icerir. LLM'e "bu cevap baglamla uyumlu mu" diye sormayi da
+    denedik ve iki yonde de guvenilmez oldugunu OLCTUK:
+      - "cevaptaki her sey metinde geciyor mu?" diye sorulunca model, gecerli
+        cevaplari da eledi (test 8/9 -> gecerli sorularda hatali ret).
+      - "uydurma bilgi var mi?" diye sorulunca bu sefer paraphrase edilmis
+        gecerli cevaplari uydurma sandi (test 8/9 -> 4/9'a dustu).
+      - Ayrica model, kendi urettigi bir halusinasyonu ("Valorant 2020'de cikti")
+        "dayanakli" diye onaylayabildi.
+    Yani ayni kucuk modeli kendi ciktisinin hakemi yapmak calismiyor. Bu yuzden
+    LLM tabanli kontrol tamamen kaldirildi; yerine kesin dogrulanabilen bir
+    olcut birakildi.
+    """
     # Zaten "bilmiyorum" diyorsak dogrulamaya gerek yok.
     if answer.strip() in (NO_INFO_MESSAGE, FALLBACK_MESSAGE):
         return True
 
-    # 1. Deterministik kontrol (modelden bagimsiz, bu yuzden once bu calisiyor).
-    if has_ungrounded_numbers(context, answer):
-        return False
-
-    response = client.chat.completions.create(
-        model=CHAT_MODEL,
-        messages=[
-            {
-                "role": "user",
-                "content": GROUNDEDNESS_PROMPT.format(context=context, answer=answer),
-            }
-        ],
-        temperature=0.0,
-        max_tokens=10,
-    )
-    verdict = (response.choices[0].message.content or "").upper()
-    return "EVET" in verdict
+    return not has_ungrounded_numbers(context, answer)
 
 
 def _generate_answer(client, system_prompt: str, question: str, max_tokens: int) -> str:
@@ -377,8 +360,8 @@ SAMPLE_QUESTIONS = [
     "Tepme kontrolü nedir?",
 ]
 
-USER_AVATAR = "🎮"
-BOT_AVATAR = "🎯"
+USER_AVATAR = "🧑"
+BOT_AVATAR = "🤖"
 
 # Valorant'in gorsel kimligine yakin bir gorunum icin ozel CSS.
 # Temel renkler .streamlit/config.toml'da tanimli; burasi sadece bicimsel
@@ -398,13 +381,21 @@ h1 {{
     margin-bottom: 4px !important;
 }}
 
-/* Sohbet balonlari: sol kenarda ince vurgu cizgisi, koseli kutular */
+/* Sohbet balonlari: sol kenarda ince vurgu cizgisi, koseli kutular.
+   Varsayilan (kullanici) kirmizi; asistan mesajlari asagida yesile cevriliyor. */
 [data-testid="stChatMessage"] {{
-    background-color: rgba(31, 39, 49, 0.55);
+    background-color: rgba(255, 70, 85, 0.06);
     border-left: 3px solid {VALORANT_RED};
     border-radius: 2px;
     padding: 14px 16px;
     margin-bottom: 10px;
+}}
+
+/* Asistan (robot) mesajlari yesil. Streamlit rol icin ayri bir secici vermiyor,
+   bu yuzden mesaji sardigimiz isaretleyici sinifa gore ayiriyoruz. */
+[data-testid="stChatMessage"]:has(.bot-msg) {{
+    background-color: rgba(15, 182, 168, 0.07);
+    border-left-color: {VALORANT_TEAL};
 }}
 
 /* Dugmeler: koseli, kirmizi cerceveli, buyuk harf */
@@ -455,31 +446,42 @@ h1 {{
 
 
 def render_sidebar() -> None:
-    """Kenar cubugu: bilgi tabani istatistikleri, model bilgisi, ornek sorular."""
+    """Kenar cubugu: model rozeti, ornek sorular, sohbet kontrolu."""
     with st.sidebar:
-        st.markdown("### ⚙️ Sistem")
+        # Model rozeti: teknik ayrintilari yigmak yerine tek satirlik sade bir
+        # gosterim. Modelin yerel calistigini belirten kucuk bir durum isigi var.
+        st.markdown(
+            f"""
+            <div style="
+                border: 1px solid rgba(255,70,85,0.35);
+                border-left: 3px solid {VALORANT_RED};
+                border-radius: 2px;
+                padding: 12px 14px;
+                margin-bottom: 22px;">
+                <div style="
+                    font-size: 0.68rem;
+                    letter-spacing: 2px;
+                    opacity: 0.55;
+                    text-transform: uppercase;">Model</div>
+                <div style="
+                    font-size: 1.15rem;
+                    font-weight: 700;
+                    letter-spacing: 0.5px;
+                    margin-top: 2px;">{CHAT_MODEL}</div>
+                <div style="font-size: 0.72rem; opacity: 0.6; margin-top: 6px;">
+                    <span style="
+                        display:inline-block;
+                        width:7px; height:7px;
+                        border-radius:50%;
+                        background:{VALORANT_TEAL};
+                        margin-right:6px;"></span>yerel · çevrimdışı
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        # Bilgi tabani istatistikleri dogrudan veritabanindan okunuyor.
-        try:
-            conn = sqlite3.connect(DB_PATH)
-            chunk_count = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-            doc_count = conn.execute(
-                "SELECT COUNT(DISTINCT source) FROM chunks"
-            ).fetchone()[0]
-            conn.close()
-        except sqlite3.Error:
-            chunk_count = doc_count = 0
-
-        col1, col2 = st.columns(2)
-        col1.metric("Doküman", doc_count)
-        col2.metric("Parça", chunk_count)
-
-        st.caption(f"💬 Sohbet: `{CHAT_MODEL}`")
-        st.caption(f"🔎 Embedding: `{EMBED_MODEL}`")
-        st.caption("🔌 Çevrimdışı — hiçbir veri dışarı çıkmaz")
-
-        st.divider()
-        st.markdown("### 💡 Örnek sorular")
+        st.markdown("### Örnek sorular")
         # Dugmeye basildiginda Streamlit zaten betigi bastan calistiriyor; soruyu
         # oturum durumuna yaziyoruz, main() asagida onu okuyup isliyor.
         for sample in SAMPLE_QUESTIONS:
@@ -487,9 +489,7 @@ def render_sidebar() -> None:
                 st.session_state.pending_question = sample
 
         st.divider()
-        soru_sayisi = sum(1 for m in st.session_state.messages if m["role"] == "user")
-        st.caption(f"Bu oturumda {soru_sayisi} soru soruldu.")
-        if st.button("🗑️ Sohbeti temizle", use_container_width=True):
+        if st.button("Sohbeti temizle", use_container_width=True):
             st.session_state.messages = []
             st.rerun()
 
@@ -540,6 +540,10 @@ def main() -> None:
     # Onceki mesajlari yeniden ciz.
     for message in st.session_state.messages:
         with st.chat_message(message["role"], avatar=message.get("avatar")):
+            if message["role"] == "assistant":
+                # CSS'in asistan mesajini yesile boyayabilmesi icin gorunmez
+                # bir isaretleyici (bkz. CUSTOM_CSS icindeki .bot-msg kurali).
+                st.markdown("<span class='bot-msg'></span>", unsafe_allow_html=True)
             st.markdown(message["content"])
             if message["role"] == "assistant":
                 render_sources(message.get("chunks", []))
@@ -566,6 +570,7 @@ def main() -> None:
         system_prompt, chunks, refusal, context = retrieve_and_gate(question)
 
     with st.chat_message("assistant", avatar=BOT_AVATAR):
+        st.markdown("<span class='bot-msg'></span>", unsafe_allow_html=True)
         if refusal is not None:
             # Dokumanlarda cevap yok: hicbir uretim yapmadan mesaji gosteriyoruz.
             answer = refusal
