@@ -2,6 +2,8 @@
 
 *Türkçe · [English README](README_EN.md)*
 
+[![Deterministik testler](https://github.com/EsatKaratas/foundry-rag-asistani/actions/workflows/deterministic-tests.yml/badge.svg)](https://github.com/EsatKaratas/foundry-rag-asistani/actions/workflows/deterministic-tests.yml)
+
 Microsoft Foundry Local, SQLite ve RAG (Retrieval-Augmented Generation) deseni kullanan,
 **tamamen çevrimdışı** çalışan bir soru-cevap asistanı. Valorant hakkındaki 15 dokümana
 dayanarak soru cevaplar; internet bağlantısı, bulut hesabı veya API anahtarı
@@ -122,7 +124,8 @@ klasörüne `.txt` dosyaları koyup `python ingest.py`'ı tekrar çalıştırmak
 | `retrieval.py` | Soruyu vektörleştirip kosinüs benzerliğiyle en alakalı parçaları bulur |
 | `lexical_gate.py` | Sözcüksel alaka kapısı — konu kaymasını deterministik olarak yakalar |
 | `app.py` | Streamlit arayüzü + LLM entegrasyonu (RAG'ın "generate" adımı) |
-| `test_qa.py` | Fonksiyonel test seti — cevaplanabilir/cevaplanamaz sorularla doğrulama |
+| `test_qa.py` | Uçtan uca test seti — cevaplanabilir/cevaplanamaz/uç durum soruları |
+| `test_deterministic.py` | Modelden bağımsız katmanların birim testleri (GPU gerektirmez) |
 | `ablation.py` | Ablasyon çalışması — her savunma katmanının katkısını ölçer |
 | `data/` | Bilgi tabanı — 15 Valorant dokümanı (.txt) |
 | `TEST_RESULTS.md` | Son test koşusunun sonuçları (otomatik üretilir) |
@@ -173,6 +176,13 @@ kullanılıyor, çünkü orada kesin bir ölçüt yok.
 - **Ortalama süre: 1.61 saniye/soru** (temiz sunucu durumunda ölçüldü), hedeflenen
   1-3 saniye aralığının içinde. Cevaplanamaz soruların çoğu **0.07 saniyede**
   reddediliyor, çünkü sözcüksel kapı hiçbir LLM çağrısı yapmadan karar veriyor.
+
+**İki katmanlı test.** `test_qa.py` uçtan uca çalışır ve Foundry Local + GPU + yüklü
+model gerektirir. Buna karşılık savunma katmanlarının çoğu tamamen deterministiktir;
+onlar `test_deterministic.py` içinde **saf fonksiyon olarak** test ediliyor (22 test,
+model gerekmiyor) ve her `push`'ta GitHub Actions üzerinde koşuyor. Rozetin kapsamı
+bilinçli olarak dar: geçmesi *"sistem çalışıyor"* değil, *"deterministik kurallar
+bozulmamış"* demek.
 
 Test seti yalnızca "cevap üretildi mi" diye bakmıyor; cevaplanabilir sorularda
 **cevabın içeriğini de** denetliyor: uzunluk sınırı, bağlamın birebir kopyalanıp
@@ -293,6 +303,24 @@ uydurmaz; ortaya çıkan bir isim varsa o bilgi bağlamdan gelmiyordur. Eklenmed
   normalizasyonu (dokümanlar Türkçe karaktersiz, kullanıcı `görevi` yazıyor) ve
   kaba gövde karşılaştırması (sondan eklemeli dil: `turnuva` → `turnuvalarında`).
 
+  **Ölçülen zaafı — eşanlamlılık:** kapı kelime eşitliğine baktığı için, aynı şeyi
+  başka kelimeyle soran geçerli soruları reddedebiliyor. 9 eşanlamlı soruluk bir
+  denemede **5'i yanlış reddedildi** ("Para biriktirmek ne zaman mantıklıdır?",
+  "Bomba yerleştirildikten sonra ne olur?" gibi). İlginç bir sebep de şuydu: "Özel
+  yetenek nasıl dolar?" sorusunda `yetenek` kelimesi dokümanlarda var ama **çok
+  yaygın olduğu için eleniyor**, geriye yalnızca eşanlamlı kelimeler kalıyordu.
+
+  *Denenen ve reddedilen çözüm:* ayırt edici kelime bulunamazsa yaygın kelimelere de
+  bakmak. Ölçüldü: 5 eşanlamlıdan 3'ünü kurtarıyor ama **cevaplanamaz 4 sorudan
+  3'ünü bozuyordu** (yaygın `valorant` kelimesi her soruyu geçiriyor). Vazgeçildi.
+
+  *Uygulanan çözüm:* bilgi tabanına özgü küçük bir **alan sözlüğü** (`ALIASES` —
+  `para→kredi`, `bomba→spike`, `ulti→nihai` gibi 13 giriş). Eşanlamlı geçiş oranı
+  **4/9 → 6/9**'a çıktı, cevaplanamaz sorularda gerileme olmadı. Kalan 3 vaka
+  kapıdan değil **retrieval'dan** kaynaklanıyor: getirilen parçalarda karşılığı olan
+  kelime hiç bulunmuyor. Sözlük bilgi tabanına özgüdür; dokümanlar değişirse gözden
+  geçirilmelidir.
+
   Kapı **toleranslı**: tek eşleşme yeterli. Amaç geçerli soruları elemek değil,
   hiçbir sözcüksel dayanağı olmayanları yakalamak. Sorunun hiç ayırt edici kelimesi
   yoksa ("Bana her şeyi anlat") kapı karar veremez ve geçirir. Entegrasyondan önce
@@ -338,6 +366,14 @@ uydurmaz; ortaya çıkan bir isim varsa o bilgi bağlamdan gelmiyordur. Eklenmed
   göremediği halüsinasyon türünü yakalar. Yanlış pozitifi düşük tutan iki kural:
   cümle başındaki kelimeler sayılmaz (her cümle büyük harfle başlar) ve
   karşılaştırma normalize edilmiş kaba gövde üzerinden yapılır.
+
+  **Bilinen sınır — küçük harf:** Kontrol büyük harfle başlayan kelimelere baktığı
+  için, model uydurduğu ismi küçük harfle yazarsa (`jett, sage, raze`) yakalanmıyor.
+  Ölçüldü ve doğrulandı. Büyük/küçük harf duyarsız bir sürüm denendi: cevaptaki
+  **korpusta hiç geçmeyen** her içerik kelimesini işaretlemek. Ölçüm sonucu
+  vazgeçildi — 15 geçerli cevapta 13 sıradan Türkçe kelime (`fakat`, `zararlı`,
+  `bozabilir`) korpusta geçmiyor, yani bu kural geçerli cevapların yarısını
+  reddederdi. Büyük harf kuralı, ölçülen alternatifinden daha iyi bir denge.
 
 - **Cevap uzunluğu kodla sınırlanıyor:** Sistem promptunun 1. kuralı "en fazla
   3 cümle" diyor — ama bu bir *talep*, garanti değil. Belirsiz sorularda model

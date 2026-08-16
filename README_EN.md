@@ -2,6 +2,8 @@
 
 *[Türkçe README](README.md) · English*
 
+[![Deterministic tests](https://github.com/EsatKaratas/foundry-rag-asistani/actions/workflows/deterministic-tests.yml/badge.svg)](https://github.com/EsatKaratas/foundry-rag-asistani/actions/workflows/deterministic-tests.yml)
+
 A question-answering assistant that runs **fully offline**, built with Microsoft
 Foundry Local, SQLite and the RAG (Retrieval-Augmented Generation) pattern. It
 answers questions from a knowledge base of 15 documents about Valorant. No internet
@@ -127,7 +129,8 @@ The interface opens at `http://localhost:8501`.
 | `retrieval.py` | Embeds the question, finds the most relevant chunks by cosine similarity |
 | `lexical_gate.py` | Lexical relevance gate — catches topic drift deterministically |
 | `app.py` | Streamlit interface + LLM integration (the "generate" step of RAG) |
-| `test_qa.py` | Functional test suite — answerable, unanswerable and edge-case questions |
+| `test_qa.py` | End-to-end test suite — answerable, unanswerable and edge-case questions |
+| `test_deterministic.py` | Unit tests for the model-independent layers (no GPU needed) |
 | `ablation.py` | Ablation study — measures each defence layer's contribution |
 | `data/` | Knowledge base — 15 Valorant documents (.txt) |
 | `TEST_RESULTS.md` | Results of the latest test run (generated) |
@@ -177,6 +180,13 @@ runs a main suite of 19 questions (15 answerable + 4 unanswerable) plus 3 edge c
 - **Average time: 1.61 seconds per question** (measured on a freshly started server),
   within the 1–3 second target. Most unanswerable questions are rejected in
   **0.07 seconds**, because the lexical gate decides without any LLM call.
+
+**Two layers of testing.** `test_qa.py` runs end to end and requires Foundry Local, a
+GPU and loaded models. Most of the defence layers, however, are fully deterministic;
+those are tested as **pure functions** in `test_deterministic.py` (22 tests, no model
+required), which runs on GitHub Actions on every push. The badge's scope is
+deliberately narrow: passing means *"the deterministic rules are intact"*, not
+*"the system works"*.
 
 The suite does not only check whether an answer was produced; for answerable
 questions it also inspects the **content**: length limit, whether the context was
@@ -297,6 +307,24 @@ was tested against the valid answers: **0 false rejections**.
   diacritics while users type `görevi`) and coarse stem matching (an agglutinative
   language: `turnuva` → `turnuvalarında`).
 
+  **Measured weakness — synonyms:** because the gate compares words, it can reject
+  valid questions phrased differently. In a trial of 9 paraphrased questions **5 were
+  falsely rejected**. One cause was subtle: in "how does the ultimate charge?" the word
+  `yetenek` (ability) does exist in the documents but is **filtered out as too
+  ubiquitous**, leaving only synonyms behind.
+
+  *Tried and rejected:* falling back to ubiquitous words when no distinctive word
+  matches. Measured: it rescues 3 of the 5 paraphrases but **breaks 3 of the 4
+  unanswerable questions** (the ubiquitous word `valorant` lets everything through).
+  Dropped.
+
+  *Adopted:* a small knowledge-base-specific **domain glossary** (`ALIASES` — 13
+  entries such as `para→kredi`, `bomba→spike`, `ulti→nihai`). The paraphrase pass rate
+  rose from **4/9 to 6/9** with no regression on unanswerable questions. The remaining
+  3 failures come from **retrieval**, not the gate: the corresponding word appears
+  nowhere in the retrieved chunks. The glossary is corpus-specific and must be revised
+  when the documents change.
+
   The gate is **tolerant**: a single match is enough. The goal is not to filter valid
   questions but to catch those with no lexical support at all. If a question has no
   distinctive words ("tell me everything"), the gate abstains. It was measured against
@@ -324,6 +352,14 @@ was tested against the valid answers: **0 false rejections**.
   context, the answer is rejected (`lexical_gate.ungrounded_proper_nouns`). Two rules
   keep false positives low: sentence-initial words are ignored (every sentence starts
   with a capital) and comparison uses normalised coarse stems.
+
+  **Known limitation — lower case:** since the check looks at capitalised words, an
+  invented name written in lower case (`jett, sage, raze`) is missed. This was measured
+  and confirmed. A case-insensitive version was tried: flag every content word in the
+  answer that **appears nowhere in the corpus**. It was dropped after measurement — in
+  15 valid answers, 13 ordinary Turkish words (`fakat`, `zararlı`, `bozabilir`) are
+  absent from the corpus, so the rule would reject half of the valid answers. The
+  capitalisation rule is a better trade-off than its measured alternative.
 
 - **Citations are added in code:** rule 5 of the system prompt asks the model to end
   its answer with `(Source: file.txt)`. When a test was added for this rule, it turned

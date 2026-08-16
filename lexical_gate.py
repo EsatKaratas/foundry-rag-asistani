@@ -44,6 +44,34 @@ STOPWORDS = {
     "etmeli", "gorevi", "bugun",
 }
 
+# Alan sozlugu: kullanicinin yazmasi muhtemel kelime -> dokumanlarda gecen karsiligi.
+#
+# Neden gerekli (olculdu): sozcuksel kapi kelime esitligine baktigi icin, ayni seyi
+# baska kelimeyle soran gecerli sorulari reddedebiliyordu. 9 esanlamli soruluk bir
+# denemede 5'i yanlis reddedildi ("Para biriktirmek ne zaman mantiklidir?",
+# "Bomba yerlestirildikten sonra ne olur?" gibi).
+#
+# Denenen alternatif: ayirt edici kelime bulunamazsa yaygin kelimelere de bakmak.
+# Olculdu ve REDDEDILDI - 5 esanlamlidan 3'unu kurtariyor ama cevaplanamaz 4 sorudan
+# 3'unu bozuyordu (yaygin "valorant" kelimesi her soruyu geciriyor).
+#
+# Bu sozluk bilgi tabanina OZGUDUR; dokumanlar degisirse gozden gecirilmelidir.
+ALIASES = {
+    "para": ["kredi"],
+    "butce": ["kredi"],
+    "bomba": ["spike"],
+    "patlayici": ["spike"],
+    "ozel yetenek": ["nihai"],
+    "ulti": ["nihai"],
+    "ultimate": ["nihai"],
+    "sicrama": ["tepme"],
+    "geri tepme": ["tepme"],
+    "gurultu": ["ses"],
+    "adim sesi": ["ayak"],
+    "duellocu": ["duelist"],
+    "nisanci": ["keskin"],
+}
+
 MIN_TERM_LEN = 4    # 3 harfli kelimeler ayirt edici degil
 STEM_LEN = 5        # kaba govde uzunlugu (Turkce ek yigilmasini tolere eder)
 UBIQUITY_RATIO = 0.6  # dokumanlarin %60+'inda gecen govde "her yerde" sayilir
@@ -87,8 +115,22 @@ def _document_frequency() -> tuple[Counter, int]:
     return frequency, len(stems_per_document)
 
 
+def _alias_stems(question: str) -> list[str]:
+    """Sorudaki kelimelerin alan sozlugundeki karsiliklarini govde olarak doner."""
+    normalized = _normalize(question)
+    stems = []
+    for term, karsiliklar in ALIASES.items():
+        if term in normalized:
+            stems.extend(_stem(k) for k in karsiliklar)
+    return stems
+
+
 def discriminative_stems(question: str) -> list[str]:
-    """Sorunun ayirt edici govdeleri: stopword degil, kisa degil, her yerde degil."""
+    """Sorunun ayirt edici govdeleri: stopword degil, kisa degil, her yerde degil.
+
+    Alan sozlugundeki karsiliklar da eklenir; boylece ayni seyi baska kelimeyle
+    soran gecerli sorular kapiya takilmaz (bkz. ALIASES).
+    """
     frequency, document_count = _document_frequency()
     ubiquity_limit = document_count * UBIQUITY_RATIO
 
@@ -102,6 +144,10 @@ def discriminative_stems(question: str) -> list[str]:
         if frequency.get(stem, 0) >= ubiquity_limit:
             continue
         stems.append(stem)
+
+    for stem in _alias_stems(question):
+        if stem not in stems:
+            stems.append(stem)
     return stems
 
 
