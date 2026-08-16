@@ -1,0 +1,13 @@
+Valorant Harita Yapisi
+
+Valorant haritalari, saldiran ve savunan takim arasindaki dengeyi kuracak sekilde tasarlanmistir. Haritalar birbirinden farkli olsa da ortak bir yapisal mantiga sahiptir.
+
+Bolgeler (site): Spike'in yerlestirilebilecegi bolgelerdir. Cogu haritada iki bolge bulunur ve bunlar A ve B olarak adlandirilir. Bazi haritalarda uc bolge vardir, bu durumda savunan takimin dagilmasi gerektigi icin savunma daha zorlasir.
+
+Orta bolge (mid): Haritanin merkezindeki, genellikle her iki bolgeye de gecis saglayan alandir. Orta bolgeyi kontrol eden takim, rakibin nereye yoneldigini erken gorebilir ve bolgeler arasinda hizli gecis yapabilir. Bu yuzden orta kontrolu haritanin en degerli stratejik hedeflerinden biridir.
+
+Dar gecitler (choke point): Bir bolgeye giris saglayan, genellikle dar ve acik alanlardir. Savunan takim buralari tutarak sayica az oyuncuyla bile ilerlemeyi yavaslatabilir. Saldiran takim ise buralari genellikle duman ve baslatici yetenekleriyle asmaya calisir.
+
+Aci (angle) ve pozisyon: Bir oyuncunun rakibi gorebildigi bakis hatti "aci" olarak adlandirilir. Iyi bir pozisyon, oyuncunun ayni anda az sayida yonden gorunmesini saglar. Kotu bir pozisyon ise oyuncunun birden fazla yonden ayni anda vurulabilmesi anlamina gelir.
+
+Ses bilgisi: Valorant'ta ayak sesleri, silah sesleri ve yetenek sesleri onemli bilgi kaynagidir. Oyuncular kosarken ses cikarir, yururken (yuru tusuna basili tutarak) sessiz hareket eder. Deneyimli oyuncular sadece sesleri dinleyerek rakiplerin konumunu tahmin edebilir.

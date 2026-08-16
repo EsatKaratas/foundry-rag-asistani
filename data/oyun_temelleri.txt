@@ -1,0 +1,11 @@
+Valorant Oyun Temelleri
+
+Valorant, Riot Games tarafindan gelistirilen 5'e 5 oynanan taktiksel nisanci (tactical shooter) bir bilgisayar oyunudur. Oyun ucretsizdir ve birinci sahis bakis acisiyla oynanir. Temel olarak iki unsuru birlestirir: klasik nisanci oyunlarindaki silah mekanikleri ve her karakterin kendine ozgu yeteneklere sahip oldugu karakter tabanli sistem.
+
+Bir macta iki takim vardir: saldiran taraf (attacker) ve savunan taraf (defender). Saldiran takimin amaci "spike" adi verilen bombayi haritadaki belirlenmis bolgelerden birine yerlestirip patlatmaktir. Savunan takimin amaci ise spike'in yerlestirilmesini engellemek, yerlestirildiyse de sure dolmadan etkisiz hale getirmektir (defuse).
+
+Bir tur (round) su sekillerde kazanilir: rakip takimin tum oyuncularini elemek, spike'i basariyla patlatmak (saldiran taraf icin), spike'i etkisiz hale getirmek (savunan taraf icin), ya da spike hic yerlestirilmeden tur suresinin dolmasi (savunan taraf icin).
+
+Standart bir macta bir takimin kazanmasi icin 13 tur kazanmasi gerekir. Takimlar 12 tur sonunda taraf degistirir; yani ilk yarida saldiran takim ikinci yarida savunmaya gecer. Skor 12-12 olursa uzatmaya gidilir.
+
+Oyunda oyuncular her turun basinda para (credit) harcayarak silah ve zirh satin alir. Olen oyuncu bir sonraki turda silahini kaybeder, bu yuzden ekonomi yonetimi oyunun onemli bir parcasidir.

@@ -1,0 +1,17 @@
+Valorant Silah Kategorileri
+
+Valorant'taki silahlar fiyatlarina ve kullanim amaclarina gore kategorilere ayrilir. Her silahin farkli hasar degeri, atis hizi, dogrulugu ve tepme (recoil) davranisi vardir.
+
+Tabancalar (sidearms): En ucuz silah grubudur. Oyuncular her turun basinda ucretsiz olarak bir baslangic tabancasiyla dogar. Tasarruf turlarinda satin alinan daha guclu tabancalar da vardir; bunlarin bir kismi kafa vurusuyla tek atista oldurebilecek hasara sahiptir, bu yuzden dusuk ekonomili turlarda dahi tehlikeli olabilirler.
+
+Hafif makineliler (SMG): Orta seviye fiyatli, yakin mesafede etkili silahlardir. Yuksek atis hizina sahiptirler ama uzun mesafede dogruluklari dusuktur. Genellikle yari alim turlarinda tercih edilirler.
+
+Pompali tufekler (shotgun): Cok yakin mesafede yuksek hasar veren, uzak mesafede neredeyse etkisiz olan silahlardir. Dar koridorlarda ve koseleri tutmak icin kullanilirlar.
+
+Tufekler (rifle): Oyunun en yaygin kullanilan ana silah grubudur. Tam alim turlarinda tercih edilirler. Orta ve uzun mesafede etkilidirler, ancak isabetli kullanim icin tepme kontrolu gerekir.
+
+Keskin nisanci tufekleri (sniper): Uzun mesafede tek atista oldurebilen, yuksek fiyatli silahlardir. Nisan alirken hareket hizi ciddi olcude duser, bu yuzden pozisyon secimi kritik onemdedir.
+
+Agir silahlar (heavy / machine gun): Cok yuksek mermi kapasitesine sahip, duvar arkasindan ates ederek bolge baskisi kurmak icin kullanilan silahlardir. Hareket halindeyken dogruluklari cok dusuktur.
+
+Zirh (shield): Silah disinda satin alinabilen korunma esyasidir. Hafif zirh daha ucuzdur ve daha az koruma saglar; agir zirh daha pahalidir ve daha fazla hasar emer. Tam alim turlarinda genellikle agir zirh tercih edilir.

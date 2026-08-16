@@ -1,9 +1,16 @@
-# Yerel RAG Doküman Asistanı
+# Yerel RAG Doküman Asistanı — Valorant Bilgi Asistanı
 
 Microsoft Foundry Local, SQLite ve RAG (Retrieval-Augmented Generation) deseni kullanan,
 tamamen çevrimdışı çalışan bir soru-cevap asistanı. Kullanıcının kendi dokümanlarına
-(ders notu, kılavuz, SSS vb.) dayanarak soru cevaplar; internet bağlantısı veya bulut
-hesabı gerektirmez.
+dayanarak soru cevaplar; internet bağlantısı veya bulut hesabı gerektirmez.
+
+Bu projede bilgi tabanı olarak **Valorant** oyunu hakkında hazırlanmış dokümanlar
+kullanılıyor (oyun temelleri, ajan rolleri, ekonomi sistemi, silah kategorileri,
+harita yapısı, yeni başlayan rehberi). Bilgi tabanını değiştirmek için `data/`
+klasöründeki `.txt` dosyalarını değiştirip `python ingest.py` çalıştırmak yeterli.
+
+**Arayüz özellikleri:** sohbet geçmişi (oturum boyunca önceki sorular korunur) ve
+cevabın token token akması (streaming).
 
 Bu proje, Microsoft'un yaz stajı/yaz okulu programı kapsamında, "Building Your First
 Local RAG Application with Foundry Local" referans dokümanına göre geliştirilmiştir.
@@ -87,66 +94,54 @@ klasörüne `.txt` dosyaları koyup `python ingest.py`'ı tekrar çalıştırmak
 | `data/` | Kaynak dokümanlar (.txt) |
 | `TEST_RESULTS.md` | Son test koşusunun sonuçları (otomatik üretilir) |
 
+## En değerli bulgu: popüler bir konuya geçince ne değişti
+
+Bilgi tabanı yaz okulu dokümanlarından **Valorant**'a çevrildiğinde, daha önce
+9/9 geçen sistem 7/9'a düştü. Sebep tek bir hata değil, RAG'in temel bir
+zorluğuydu:
+
+**1. Kosinüs eşiği korpusa bağımlıymış.** Karışık konulu bir doküman setinde
+(her dosya farklı konu) 0.50 eşiği çalışıyordu. Ama tüm dokümanlar tek bir konu
+hakkında olduğunda, kosinüs skoru artık "bu parça soruyu cevaplıyor mu"yu değil
+sadece "bu metin Valorant hakkında mı"yı ölçüyor. Dokümanlarda cevabı olmayan
+sorular bile 0.53-0.60 skorluyordu.
+
+**2. Model konuyu zaten biliyordu.** Yaz okulu dokümanlarında bu sorun yoktu
+çünkü model o programı hiç bilmiyordu. Valorant popüler bir oyun olduğu için
+model, bağlamda olmayan bilgiyi kendi eğitim verisinden verebiliyordu
+("Valorant 2020'de çıktı" — doğru bilgi, ama bizim dokümanlarımızda yok).
+
+**3. Modelin kendi halüsinasyonunu kendisine denetletmek işe yaramadı.** Üretim
+sonrası bir "dayanak kontrolü" (groundedness check) eklendi: *"cevaptaki bilgi
+bağlamda geçiyor mu?"* Sonuç: model kendi ürettiği yanlış cevabı **"evet,
+dayanaklı"** diye onayladı. Sebebi açık — o bilgiyi bağımsız olarak "bildiği"
+için kontrol katmanı da aynı yanılgıya düşüyor.
+
+**Çözüm — modelden bağımsız, deterministik doğrulama:** Sayılar (tarih, fiyat,
+adet) halüsinasyonun en sık görüldüğü bilgi tipidir ve modele hiç sormadan,
+kodla kesin olarak kontrol edilebilir. Cevapta bağlamda hiç geçmeyen bir sayı
+varsa cevap reddediliyor. Bu, "2020" hatasını kesin olarak çözdü.
+
+**Alınan ders:** LLM tabanlı kontroller olasılıksaldır ve aynı modelin kendi
+hatasını yakalaması beklenemez. Kesin olarak doğrulanabilen şeyler (sayılar,
+tarihler, isimler) kodla kontrol edilmelidir.
+
 ## Test Sonuçları
 
-`data/` klasörü şu an yaz okulu programı hakkında 5 gerçek doküman içeriyor (genel
-bilgiler, proje seçenekleri, sertifika süreci, staj belgesi süreci, Foundry Local
-teknik detayları). `python test_qa.py` ile 9 soruluk bir test seti (6 cevaplanabilir
-+ 3 cevaplanamaz) çalıştırıldı:
+`data/` klasörü Valorant hakkında 6 doküman içeriyor. `python test_qa.py` ile
+9 soruluk bir test seti (6 cevaplanabilir + 3 cevaplanamaz) çalıştırıldı:
 
-- **9 / 9 test geçti — art arda 5 bağımsız koşuda da**
-- **Ortalama süre: ~6-9 saniye/soru**
+- **8 / 9 test geçti**
+- **Ortalama süre: ~2.2 saniye/soru** — referans dokümanın hedeflediği 1-3 saniye
+  aralığının içinde.
 
-### Buraya nasıl gelindi (bulunan ve düzeltilen 4 gerçek hata)
-
-Sistem ilk çalışır hale geldiğinde 6/9 - 8/9 arasında dalgalanıyordu. Kök nedenler
-tek tek ölçülerek bulundu:
-
-1. **Chunking hatası — yetim başlık parçaları.** İlk `chunk_text()` sürümü, kısa bir
-   başlık satırından sonra uzun bir paragraf gelince başlığı *tek başına* bir parça
-   olarak kaydediyordu (ör. sadece `"Yaz Okulu Programi - Genel Bilgiler"`, 35
-   karakter). Bu tür kısa parçaların embedding vektörü çok belirsiz oluyor ve
-   alakasız sorular dahil **her şeye** orta seviyede benziyor — bu da alakasız
-   soruların yanlışlıkla "alakalı" görünmesine yol açıyordu. Düzeltme:
-   `MIN_CHUNK_CHARS` altındaki parçalar asla tek başına bırakılmıyor.
-
-2. **Başlık yanlılığı (title bias) — retrieval yanlış parçayı getiriyordu.** Sadece
-   her dokümanın ilk parçası başlığı içerdiği için, "Yaz okulu programı kaç hafta
-   sürüyor?" sorusunda **beş dokümanın da başlıklı ilk parçası** üst sıraları
-   doldurdu ve cevabın gerçekten bulunduğu parça 6. sıraya düştü (yani hiç
-   getirilmedi). Düzeltme: doküman başlığı **her parçaya** ekleniyor (contextual
-   chunk headers). Aynı soruda doğru parça 6. sıradan 1. sıraya çıktı.
-
-3. **Tek eşiğin yetersizliği.** Başta "retrieval skoru eşiğin altındaysa cevap
-   verme" mantığı kuruldu. Ama ölçüldü ki cevaplanabilir (0.37-0.71) ve
-   cevaplanamaz (0.26-0.40) soruların skor dağılımları **çakışıyor** — tek bir sabit
-   eşik bunları güvenilir ayıramıyor. Düzeltme: üç bölgeli karar mantığı (aşağıda).
-
-4. **Üretim adımında düşünme kaçağı.** `/no_think` yönergesine rağmen model ~3
-   koşuda 1 kez uzun iç düşünmeye giriyor, token bütçesi dolmadan cevaba
-   ulaşamıyordu. Düzeltme: bu durum tespit edilip daha geniş token bütçesiyle bir
-   kez yeniden deneniyor.
-
-5. **Bağlamı kopyalama (testlerin kaçırdığı hata).** Arayüzde manuel deneme
-   sırasında görüldü: model soruyu cevaplamak yerine bağlam metnini kelimesi
-   kelimesine, üç kez tekrarlayarak yazıyor ve token bütçesi dolana kadar devam
-   ediyordu (cevap hem yanlış hem ~100 saniye sürüyordu). Sebep: sistem promptu
-   *"hangi kaynak dosyadan yararlandığını belirt"* diyordu ve bağlam
-   `[Kaynak: dosya]` blokları halinde veriliyordu — model bunu "blokları olduğu
-   gibi yaz" diye yorumluyordu. Düzeltme: açık uzunluk sınırı (en fazla 3 cümle),
-   açık "kopyalama" yasağı, kaynak gösterimi için dar tek satırlık format.
-
-   **Bu hata testlerin 9/9 verdiği bir dönemde vardı** — çünkü test yalnızca
-   "cevap üretildi mi yoksa 'bilmiyorum' mu dedi" diye bakıyordu, cevabın
-   *içeriğine* bakmıyordu. Bu yüzden `test_qa.py`'ye iki kalite kontrolü eklendi:
-   (a) cevap uzunluk sınırı, (b) cevabın bağlamdan uzun bir bölümü aynen
-   kopyalayıp kopyalamadığının tespiti.
-
-### Ölçüm sırasında öğrenilen bir işletim notu
-
-Art arda çok sayıda test koşusundan sonra GPU belleği dolmaya başlıyor (%94'e kadar
-çıktığı gözlemlendi) ve tüm cevap süreleri ~4x yavaşlıyor. Bu bir kod hatası değil;
-`foundry server restart` ile servis yeniden başlatılınca süreler normale dönüyor.
+**Bilinen 1 sınır durum:** "Valorant turnuvalarında ödül havuzu ne kadar?" sorusuna
+sistem "bilmiyorum" demek yerine oyun içi ekonomi sistemini anlatıyor. Önemli nokta:
+bu bir **halüsinasyon değil** — verdiği bilgi doğru ve dokümanlarda gerçekten var.
+Sorun, modelin sorulan soruyu değil semantik olarak yakın başka bir soruyu
+cevaplaması ("turnuva ödülü" ile "oyun içi para" arasındaki anlamsal yakınlık).
+Uydurma bilgi vermediği için, yanlış bilgi üretmekten çok daha zararsız bir hata
+türü olarak kabul edildi ve gizlenmedi.
 
 Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
 
@@ -167,7 +162,7 @@ Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
   cevap gösterilmeden önce regex ile temizleniyor.
 - **Halüsinasyon karşı önlemi — üç bölgeli alaka kararı:** Getirilen her parça için
   karar şöyle veriliyor:
-  - `skor >= 0.50` → kesin alakalı, LLM'e sorulmaz (deterministik + hızlı)
+  - `skor >= 0.75` → kesin alakalı, LLM'e sorulmaz (deterministik + hızlı)
   - `skor < 0.30` → kesin alakasız, LLM'e sorulmaz (deterministik + hızlı)
   - arada (gri bölge) → **alaka denetleyicisine** sorulur
 
@@ -179,7 +174,13 @@ Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
   soruyla denetleniyor, sadece geçenler cevap üretimine gönderiliyor. (Literatürde
   "retrieval grading" / CRAG deseni olarak biliniyor.)
 
-  **Neden üç bölge, neden hepsini grader'a sormuyoruz:** GPU çıkarımı tam
-  deterministik olmadığı için aynı soru farklı koşularda farklı sonuçlanabiliyordu
-  (ölçüldü). Skorun net olduğu durumlarda kararı koda bırakmak hem bu kararsızlığı
-  ortadan kaldırdı hem de gereksiz LLM çağrılarını eleyerek hızlandırdı.
+  **Neden üç bölge:** GPU çıkarımı tam deterministik olmadığı için aynı soru farklı
+  koşularda farklı sonuçlanabiliyor. Skorun net olduğu durumlarda kararı koda bırakmak
+  hem bu kararsızlığı azaltıyor hem de gereksiz LLM çağrılarını eleyerek hızlandırıyor.
+  Üst eşik başta 0.50'ydi; tek konulu (Valorant) bir korpusta bunun yetersiz kaldığı
+  ölçülüp 0.75'e çıkarıldı (bkz. "En değerli bulgu" bölümü).
+
+- **Dayanak kontrolü (son savunma katmanı):** Üretilen cevapta, bağlamda hiç geçmeyen
+  bir sayı varsa cevap reddedilip "bilmiyorum" dönülüyor. Bu kontrol bilinçli olarak
+  **deterministiktir** — LLM'e sorulan bir dayanak kontrolü denendi ve model kendi
+  halüsinasyonunu onayladığı için başarısız oldu.

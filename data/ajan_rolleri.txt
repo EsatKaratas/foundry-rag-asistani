@@ -1,0 +1,11 @@
+Valorant Ajan Rolleri
+
+Valorant'ta oynanabilir karakterlere "ajan" (agent) denir. Her ajanin kendine ozgu yetenekleri vardir ve ajanlar oynanis tarzlarina gore dort ana role ayrilir. Bir takimda genellikle bu rollerden dengeli bir dagilim tercih edilir.
+
+Duelist (Duellocu): Takimin saldiri gucunu olusturan roldur. Duelist ajanlar catismayi baslatan, ilk giren ve rakip oyuncularla dogrudan carpismayi hedefleyen karakterlerdir. Yetenekleri genellikle kendi hareket kabiliyetlerini artirmaya ve tek basina agresif oynamaya yoneliktir. Takimdan destek almaktan cok kendi giris yolunu acmaya odaklanirlar.
+
+Initiator (Baslatici): Takimin bir bolgeye guvenli girmesini saglayan roldur. Initiator ajanlar, rakiplerin nerede oldugunu ortaya cikaran kesif yetenekleri veya rakipleri gecici olarak etkisiz hale getiren yetenekler kullanir. Amaclari, duelist'in ve takimin bolgeye girmesi icin ortami hazirlamaktir.
+
+Controller (Kontrolcu): Haritanin gorus alanini kontrol eden roldur. Controller ajanlar duman (smoke) benzeri yeteneklerle rakiplerin gorusunu keserek takimin nereden gorunecegini belirler. Hem saldirida bolgeye girisi gizlemek hem de savunmada rakibin ilerleyisini yavaslatmak icin kullanilirlar.
+
+Sentinel (Nobetci): Savunma ve bolge kilitleme roludur. Sentinel ajanlar tuzak, kamera veya engel gibi yeteneklerle bir bolgeyi guvenli tutar ve arkadan gelebilecek rakipleri erkenden tespit eder. Takim bir bolgede saldiri yaparken sentinel genellikle diger bolgeyi ya da arkayi korur.

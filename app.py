@@ -53,7 +53,21 @@ NO_INFO_MESSAGE = "Bu bilgi elimdeki dokumanlarda yok."
 # Olculen degerler: cevaplanabilir sorularin en iyi parca skorlari 0.37-0.71,
 # cevaplanamaz sorularinki 0.26-0.40 araliginda.
 SIMILARITY_THRESHOLD = 0.30
-HIGH_CONFIDENCE_THRESHOLD = 0.50
+
+# ONEMLI DERS (Valorant dokumanlarina gecince ortaya cikti):
+# Bu esik KORPUSA BAGIMLIDIR ve dikkatli secilmelidir.
+#
+# Ilk deger 0.50 idi ve karisik konulu bir dokuman setinde (her dosya farkli bir
+# konu) dogru calisiyordu. Ama tum dokumanlar TEK BIR KONU hakkinda oldugunda
+# (hepsi Valorant), kosinus skoru artik "bu parca soruyu cevapliyor mu" degil,
+# sadece "bu metin Valorant hakkinda mi" bilgisini olcuyor. Sonuc: dokumanlarda
+# cevabi olmayan sorular (ornegin "Valorant hangi tarihte cikti?") bile 0.53-0.60
+# skorluyor, esigi asiyor, denetleyici hic calismadan kabul ediliyor ve model
+# kendi egitim bilgisinden uydurma cevap veriyordu.
+#
+# Bu yuzden esik yuksege cekildi: artik yalnizca gercekten cok yuksek skorlu
+# parcalar denetleyiciyi atlar, geri kalan her sey denetlenir.
+HIGH_CONFIDENCE_THRESHOLD = 0.75
 
 # Alaka denetleyicisi (relevance grader) promptu.
 # Neden gerekli: kucuk dil modelleri "baglamda cevap yoksa cevap verme" gibi acik
@@ -63,13 +77,26 @@ HIGH_CONFIDENCE_THRESHOLD = 0.50
 # Bu yuzden getirilen her parca once ayri ayri denetleniyor, sadece alakali
 # bulunanlar cevap uretimine gonderiliyor. (Bu yaklasim literaturde "retrieval
 # grading" / CRAG deseni olarak biliniyor.)
+#
+# ONEMLI (Valorant dokumanlarina gecince ortaya cikan bir zayiflik):
+# Bu promptun ilk surumu "baglam soruyu cevaplamak icin gerekli bilgiyi iceriyor
+# mu" diye soruyordu. Tum dokumanlar TEK BIR KONU hakkinda oldugunda bu soru
+# yetersiz kaliyor: denetleyici "bu metin Valorant hakkinda" ile "bu metin
+# sorunun cevabini iceriyor" ayrimini yapamiyor ve genel tanitim metinlerini de
+# alakali sayiyordu. Sonucta dokumanlarda olmayan sorular (ornegin oyunun cikis
+# tarihi) uretime gecip modelin kendi egitim bilgisinden cevaplanmasina yol
+# aciyordu. Duzeltme: soruda ISTENEN BILGININ metinde acikca gecip gecmedigini
+# sormak ve "ayni konu hakkinda olmak yetmez" kuralini acikca yazmak.
 RELEVANCE_GRADER_PROMPT = """/no_think
-Gorevin: verilen BAGLAM metninin, KULLANICI SORUSUNU cevaplamak icin gerekli bilgiyi icerip icermedigine karar vermek.
-Sadece tek kelime yaz: EVET veya HAYIR. Baska hicbir sey yazma.
-EVET = baglamda sorunun cevabi var.
-HAYIR = baglamda sorunun cevabi yok.
+Asagidaki METIN, KULLANICI SORUSUNUN cevabini iceriyor mu?
 
-BAGLAM:
+Sadece tek kelime yaz: EVET veya HAYIR. Baska hicbir sey yazma.
+
+EVET = soruda istenen bilgi (tarih, sayi, isim, tanim, aciklama) metinde acikca yaziyor.
+HAYIR = soruda istenen bilgi metinde yok. Metin ayni konu hakkinda olsa bile,
+istenen bilginin kendisi metinde gecmiyorsa HAYIR yaz.
+
+METIN:
 {context}
 
 KULLANICI SORUSU: {question}"""
@@ -120,14 +147,93 @@ Kurallar:
 1. Cevabin EN FAZLA 3 cumle olsun. Kisa ve net yaz.
 2. BAGLAM metnini oldugu gibi kopyalama, tekrar etme veya yapistirmaya calisma.
    Sadece sorunun cevabini kendi cumlelerinle yaz.
-3. Sorunun cevabi BAGLAM'da yoksa, baska hicbir sey yazmadan sadece su cumleyi yaz:
+3. SADECE BAGLAM'daki bilgiyi kullan. Konu hakkinda kendi bildiklerini KULLANMA.
+   Bir bilgiyi biliyor olsan bile, BAGLAM'da yazmiyorsa o bilgiyi verme.
+4. Sorunun cevabi BAGLAM'da yoksa, baska hicbir sey yazmadan sadece su cumleyi yaz:
    "Bu bilgi elimdeki dokumanlarda yok."
-4. Cevabin en sonuna, yeni bir satirda, kullandigin kaynagi tek satirda ekle.
+5. Cevabin en sonuna, yeni bir satirda, kullandigin kaynagi tek satirda ekle.
    Ornek bicim: (Kaynak: ornek_dosya.txt)
 
 BAGLAM:
 {context}
 """
+
+
+# Dayanak (groundedness) kontrolu.
+#
+# Neden gerekli: alaka denetleyicisi tek basina yeterli olmadi. Valorant gibi
+# POPULER bir konuda model, konuyu kendi egitim verisinden zaten biliyor. Bir
+# parca yanlislikla "alakali" sayilip uretime gecerse, model baglamda olmayan
+# bilgiyi kendi hafizasindan verebiliyor (ornegin oyunun cikis tarihi). Ustelik
+# 4B'lik bir modelin ikili karari kosudan kosuya degisebildigi icin denetleyiciyi
+# daha da sikilastirmak bu kararsizligi cozmuyor.
+#
+# Bu yuzden uretimden SONRA ikinci bir kontrol yapiyoruz: uretilen cevaptaki
+# bilgi gercekten baglamda geciyor mu? Gecmiyorsa cevap kullaniciya hic
+# gosterilmiyor. Bu, "modelin kendi bilgisinden cevaplamasi" hatasini dogrudan
+# hedefleyen bir savunmadir (literaturde "faithfulness / groundedness check").
+GROUNDEDNESS_PROMPT = """/no_think
+Asagida bir METIN ve bu metne dayanarak verildigi iddia edilen bir CEVAP var.
+
+CEVAP'ta gecen bilgilerin tamami METIN'de yaziyor mu?
+
+Sadece tek kelime yaz: EVET veya HAYIR. Baska hicbir sey yazma.
+
+EVET = cevaptaki tum bilgiler metinde bulunuyor.
+HAYIR = cevapta, metinde bulunmayan en az bir bilgi var.
+
+METIN:
+{context}
+
+CEVAP: {answer}"""
+
+
+NUMBER_PATTERN = re.compile(r"\d+")
+
+
+def has_ungrounded_numbers(context: str, answer: str) -> bool:
+    """Cevapta, baglamda hic gecmeyen bir sayi var mi?
+
+    Neden bu deterministik kontrol gerekli (olculen bir gercek):
+    LLM tabanli dayanak kontrolu tek basina YETMEDI. Model "Valorant 2020'de
+    cikti" diye baglamda olmayan bir bilgi uretti ve AYNI model bu cevabi
+    "dayanakli" diye onayladi. Sebebi acik: model o bilgiyi kendi egitim
+    verisinden bagimsiz olarak "biliyor", dolayisiyla kontrol katmani da ayni
+    yanilgiya dusuyor. Yani bir modelin halusinasyonunu ayni modele denetletmek
+    guvenilir degil.
+
+    Sayilar (tarih, fiyat, adet) halusinasyonun en sik goruldugu bilgi tipidir
+    ve modele hic sormadan, kodla kesin olarak dogrulanabilir. Cevapta baglamda
+    bulunmayan bir sayi varsa, o cevap dayanaksizdir.
+    """
+    context_numbers = set(NUMBER_PATTERN.findall(context))
+    answer_numbers = set(NUMBER_PATTERN.findall(answer))
+    return bool(answer_numbers - context_numbers)
+
+
+def is_answer_grounded(client, context: str, answer: str) -> bool:
+    """Uretilen cevabin baglamdaki bilgiye dayanip dayanmadigini dogrular."""
+    # Zaten "bilmiyorum" diyorsak dogrulamaya gerek yok.
+    if answer.strip() in (NO_INFO_MESSAGE, FALLBACK_MESSAGE):
+        return True
+
+    # 1. Deterministik kontrol (modelden bagimsiz, bu yuzden once bu calisiyor).
+    if has_ungrounded_numbers(context, answer):
+        return False
+
+    response = client.chat.completions.create(
+        model=CHAT_MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": GROUNDEDNESS_PROMPT.format(context=context, answer=answer),
+            }
+        ],
+        temperature=0.0,
+        max_tokens=10,
+    )
+    verdict = (response.choices[0].message.content or "").upper()
+    return "EVET" in verdict
 
 
 def _generate_answer(client, system_prompt: str, question: str, max_tokens: int) -> str:
@@ -164,7 +270,7 @@ def retrieve_and_gate(question: str, k: int = 3):
     Hem akissiz (answer_query) hem akisli (stream_answer) yol ayni mantigi
     kullansin diye ayri bir fonksiyona alindi.
 
-    Doner: (system_prompt, kullanilan_parcalar, red_mesaji)
+    Doner: (system_prompt, kullanilan_parcalar, red_mesaji, baglam_metni)
     red_mesaji None degilse hicbir uretim yapilmamalidir.
     """
     chunks = get_top_chunks(question, k=k)
@@ -172,7 +278,7 @@ def retrieve_and_gate(question: str, k: int = 3):
     # 1. Kapi (ucuz): en iyi parca bile cok dusuk skorluysa, hicbir LLM cagrisi
     # yapmadan eliyoruz.
     if not chunks or chunks[0]["score"] < SIMILARITY_THRESHOLD:
-        return None, chunks, NO_INFO_MESSAGE
+        return None, chunks, NO_INFO_MESSAGE, ""
 
     client = get_client()
 
@@ -187,10 +293,11 @@ def retrieve_and_gate(question: str, k: int = 3):
             relevant_chunks.append(chunk)
 
     if not relevant_chunks:
-        return None, chunks, NO_INFO_MESSAGE
+        return None, chunks, NO_INFO_MESSAGE, ""
 
-    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=build_context(relevant_chunks))
-    return system_prompt, relevant_chunks, None
+    context = build_context(relevant_chunks)
+    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
+    return system_prompt, relevant_chunks, None, context
 
 
 def answer_query(question: str, k: int = 3) -> tuple[str, list[dict]]:
@@ -199,7 +306,7 @@ def answer_query(question: str, k: int = 3) -> tuple[str, list[dict]]:
     Akissiz surum - testler bunu kullanir.
     Doner: (model_cevabi, kullanilan_parcalar)
     """
-    system_prompt, chunks, refusal = retrieve_and_gate(question, k=k)
+    system_prompt, chunks, refusal, context = retrieve_and_gate(question, k=k)
     if refusal is not None:
         return refusal, chunks
 
@@ -213,6 +320,10 @@ def answer_query(question: str, k: int = 3) -> tuple[str, list[dict]]:
     # bir kez daha deniyoruz ki dusunme adimi tamamlanip cevap uretilebilsin.
     if answer == FALLBACK_MESSAGE:
         answer = _generate_answer(client, system_prompt, question, max_tokens=1200)
+
+    # Son savunma: cevaptaki bilgi gercekten baglamda geciyor mu?
+    if not is_answer_grounded(client, context, answer):
+        return NO_INFO_MESSAGE, chunks
 
     return answer, chunks
 
@@ -346,7 +457,7 @@ def main() -> None:
 
     # Retrieval ve alaka denetimi burada, TEK SEFER yapiliyor.
     with st.spinner("Dokümanlar taranıyor..."):
-        system_prompt, chunks, refusal = retrieve_and_gate(question)
+        system_prompt, chunks, refusal, context = retrieve_and_gate(question)
 
     with st.chat_message("assistant"):
         if refusal is not None:
@@ -354,9 +465,18 @@ def main() -> None:
             answer = refusal
             st.markdown(answer)
         else:
-            # st.write_stream generator'i okurken cevabi ekrana parca parca
-            # yazar ve tamamlanmis metni geri dondurur.
-            answer = st.write_stream(stream_generation(system_prompt, question))
+            # Cevabi degistirilebilir bir alana yaziyoruz: akis bittikten sonra
+            # dayanak kontrolu basarisiz olursa yazilani silip yerine
+            # "bilmiyorum" mesajini koyabilmemiz gerekiyor.
+            slot = st.empty()
+            with slot.container():
+                answer = st.write_stream(stream_generation(system_prompt, question))
+
+            if not is_answer_grounded(get_client(), context, answer):
+                answer = NO_INFO_MESSAGE
+                slot.empty()
+                slot.markdown(answer)
+
         render_sources(chunks)
 
     st.session_state.messages.append(

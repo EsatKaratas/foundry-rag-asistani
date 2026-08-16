@@ -17,16 +17,22 @@ from datetime import datetime, timezone
 from app import answer_query, FALLBACK_MESSAGE, NO_INFO_MESSAGE
 
 # (soru, dokumanlarda cevabi var mi, beklenen kaynak dosya ya da None)
+#
+# Cevaplanamaz sorular bilincli olarak secildi: bazilari oyunla TAMAMEN alakasiz
+# (hava durumu), bazilari ise oyunla ilgili ama dokumanlarda YER ALMAYAN konular
+# (turnuva odulu, oyunun cikis tarihi). Ikinci grup daha zorlayici bir testtir,
+# cunku konu yakinligi nedeniyle retrieval yine de bir seyler getirir ve sistemin
+# "yakin ama cevap degil" ayrimini yapabilmesi gerekir.
 TEST_CASES = [
-    ("Yaz okulu programi kac hafta suruyor?", True, "genel_bilgiler.txt"),
-    ("Iletisim icin hangi kanal kullaniliyor?", True, "genel_bilgiler.txt"),
-    ("Hangi proje secenekleri var?", True, "proje_secenekleri.txt"),
-    ("Sertifika almak icin ne yapmam lazim?", True, "sertifika_ve_teslim.txt"),
-    ("Zorunlu stajda sigorta girisini kim yapiyor?", True, "staj_belgesi_sureci.txt"),
-    ("RAG mimarisinin adimlari nelerdir?", True, "foundry_local_teknik_detaylar.txt"),
-    ("Python nasil ogrenilir?", False, None),
+    ("Valorant kac kisiyle oynanir?", True, "oyun_temelleri.txt"),
+    ("Duelist rolunun gorevi nedir?", True, "ajan_rolleri.txt"),
+    ("Eco turu ne demek?", True, "ekonomi_sistemi.txt"),
+    ("Keskin nisanci tufeklerinin dezavantaji nedir?", True, "silah_kategorileri.txt"),
+    ("Orta bolgeyi kontrol etmek neden onemli?", True, "harita_yapisi.txt"),
+    ("Yeni baslayan biri ajan secerken neye dikkat etmeli?", True, "yeni_baslayan_rehberi.txt"),
+    ("Valorant hangi tarihte cikti?", False, None),
+    ("Valorant turnuvalarinda odul havuzu ne kadar?", False, None),
     ("Bugun hava nasil?", False, None),
-    ("En sevdigin renk nedir?", False, None),
 ]
 
 

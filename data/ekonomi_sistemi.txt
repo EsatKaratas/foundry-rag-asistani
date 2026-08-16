@@ -1,0 +1,15 @@
+Valorant Ekonomi Sistemi
+
+Valorant'ta her turun basinda kisa bir alisveris asamasi (buy phase) vardir. Oyuncular bu asamada kredi (credit) harcayarak silah, zirh ve yetenek satin alir. Kredi miktari sinirlidir, bu yuzden ne zaman tam ekipman alinacagi, ne zaman tasarruf yapilacagi takim halinde karar verilmesi gereken bir konudur.
+
+Kredi kazanma yollari: tur kazanmak, tur kaybetmek (kaybeden takim daha az kredi alir ama ust uste kaybettikce bu miktar artar), rakip oyuncu oldurmek ve spike yerlestirmek. Ust uste kaybedilen turlarda verilen artan kredi, geride kalan takimin tamamen ekonomisiz kalmasini onlemek icindir.
+
+Alisveris turleri:
+
+Tam alim (full buy): Oyuncunun ana silahini, tam zirhini ve yeteneklerini aldigi turdur. Takimin en guclu oldugu tur tipidir.
+
+Tasarruf turu (eco / save): Takim bilincli olarak cok az harcama yapar veya hic harcamaz. Amac bir sonraki turda herkesin tam alim yapabilmesidir. Bu turlarda genellikle sadece tabanca alinir.
+
+Yari alim (force buy / half buy): Takim tam alim yapacak kadar krediye sahip degildir ama turu bos gecmek de istemez. Daha ucuz silahlar ve kismi zirh alinir. Riskli bir tercihtir, cunku kaybedilirse bir sonraki turun ekonomisi de bozulur.
+
+Onemli bir kural: olen oyuncu elindeki silahi kaybeder, bir sonraki tura tabancayla baslar. Hayatta kalan oyuncu silahini korur. Bu yuzden kaybedilecegi belli olan bir turda hayatta kalip silahi kurtarmak (save yapmak) ekonomik olarak dogru bir tercih olabilir.
