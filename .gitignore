@@ -7,3 +7,6 @@ venv/
 # Ingest ile yeniden uretilebilir oldugu icin veritabani repoya girmiyor.
 # Kendi verinle "python ingest.py" calistirinca yeniden olusur.
 rag.db
+
+# PyCharm proje ayarlari
+.idea/
