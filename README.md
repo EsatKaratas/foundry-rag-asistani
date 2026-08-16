@@ -186,13 +186,13 @@ katmanı tek tek kapatıp testi yeniden koşar:
 
 | Yapılandırma | Ana test | Katkısı |
 |---|---|---|
-| **Tam sistem** | **14/14** | referans |
-| Sözcüksel kapı kapalı | 13/14 | **1 vaka** |
-| Özel isim kontrolü kapalı | 13/14 | **1 vaka** |
-| LLM alaka denetleyicisi kapalı | 14/14 | 0 vaka |
-| Sayı doğrulaması kapalı | 14/14 | 0 vaka |
-| Kosinüs eşiği kapalı | 14/14 | 0 vaka |
-| **Çıplak RAG** (hiç savunma yok) | **11/14** | **3 vaka** |
+| **Tam sistem** | **19/19** | referans |
+| Sözcüksel kapı kapalı | 18/19 | **1 vaka** |
+| Özel isim kontrolü kapalı | 18/19 | **1 vaka** |
+| LLM alaka denetleyicisi kapalı | 19/19 | 0 vaka |
+| Sayı doğrulaması kapalı | 19/19 | 0 vaka |
+| Kosinüs eşiği kapalı | 19/19 | 0 vaka |
+| **Çıplak RAG** (hiç savunma yok) | **16/19** | **3 vaka** |
 
 Üç sonuç çıkıyor:
 
@@ -207,6 +207,10 @@ isim kontrolü — ikisi de hiç LLM çağrısı yapmıyor.
 **test setinin o katmanların savunduğu hata tipini içermediği** anlamına geliyor.
 Nitekim ablasyon sırasında tam da böyle bir açık bulundu (aşağıya bakın) ve teste
 eklendi. Doğru tepki katmanı silmek değil, eksik test vakasını yazmaktı.
+
+Bu tablo bilgi tabanı büyütülürken üç kez yeniden ölçüldü (6, 10 ve 15 doküman).
+Her katmanın kurtardığı vaka sayısı değişmedi — yani sonuçlar tek bir korpus
+boyutuna özgü bir tesadüf değil.
 
 ### Ablasyonun bulduğu gerçek açık
 

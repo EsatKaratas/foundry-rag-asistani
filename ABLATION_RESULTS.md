@@ -1,4 +1,4 @@
-# Ablasyon Calismasi — 2026-08-16T15:35:50.485294+00:00
+# Ablasyon Calismasi — 2026-08-16T18:06:08.886447+00:00
 
 Her savunma katmani tek tek kapatilip testin ne kadar bozuldugu olculdu.
 Amac, her tasarim kararinin gercekten gerekli oldugunu gostermek: bir
@@ -14,13 +14,13 @@ katman kapatildiginda sonuc degismiyorsa o katman gereksizdir.
 
 | Yapilandirma | Ana test | Uc durum | Ort. sure | Katkisi | Aciklama |
 |---|---|---|---|---|---|
-| Tam sistem | 14/14 | 3/3 | 1.56 sn | referans | dort savunma katmani da acik |
-| Sozcuksel kapi KAPALI | 13/14 | 3/3 | 1.91 sn | **1 vaka** | kosinus + LLM denetleyici + sayi kontrolu var |
-| LLM alaka denetleyicisi KAPALI | 14/14 | 3/3 | 1.17 sn | 0 vaka | getirilen her parca kabul ediliyor |
-| Sayi dogrulamasi KAPALI | 14/14 | 3/3 | 1.55 sn | 0 vaka | uretim sonrasi sayi dayanagi yok |
-| Ozel isim kontrolu KAPALI | 13/14 | 3/3 | 1.55 sn | **1 vaka** | uretim sonrasi ozel isim dayanagi yok |
-| Kosinus esigi KAPALI | 14/14 | 3/3 | 1.57 sn | 0 vaka | dusuk skorlu parcalar da elenmiyor |
-| Ciplak RAG | 11/14 | 3/3 | 1.16 sn | **3 vaka** | hicbir savunma yok - getir + uret |
+| Tam sistem | 19/19 | 3/3 | 2.50 sn | referans | bes savunma katmani da acik |
+| Sozcuksel kapi KAPALI | 18/19 | 3/3 | 2.89 sn | **1 vaka** | kosinus + LLM denetleyici + sayi kontrolu var |
+| LLM alaka denetleyicisi KAPALI | 19/19 | 3/3 | 1.62 sn | 0 vaka | getirilen her parca kabul ediliyor |
+| Sayi dogrulamasi KAPALI | 19/19 | 3/3 | 2.52 sn | 0 vaka | uretim sonrasi sayi dayanagi yok |
+| Ozel isim kontrolu KAPALI | 18/19 | 3/3 | 2.51 sn | **1 vaka** | uretim sonrasi ozel isim dayanagi yok |
+| Kosinus esigi KAPALI | 19/19 | 3/3 | 2.41 sn | 0 vaka | dusuk skorlu parcalar da elenmiyor |
+| Ciplak RAG | 16/19 | 3/3 | 1.72 sn | **3 vaka** | hicbir savunma yok - getir + uret |
 
 ## Kapatildiginda kaybedilen vakalar
 
