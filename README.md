@@ -1,7 +1,7 @@
 # Valorant Bilgi Asistanı
 
 Microsoft Foundry Local, SQLite ve RAG (Retrieval-Augmented Generation) deseni kullanan,
-**tamamen çevrimdışı** çalışan bir soru-cevap asistanı. Valorant hakkındaki 10 dokümana
+**tamamen çevrimdışı** çalışan bir soru-cevap asistanı. Valorant hakkındaki 15 dokümana
 dayanarak soru cevaplar; internet bağlantısı, bulut hesabı veya API anahtarı
 gerektirmez, veri cihazdan çıkmaz.
 
@@ -12,9 +12,10 @@ modele hiç soru sormadan, kodla karar veriyor. Her kapının teste ne kattığ�
 [ölçülerek gösterildi](#ablasyon-çalışması-her-katman-gerçekten-gerekli-mi):
 savunmasız bir RAG, cevaplanamaz 4 sorudan 3'üne uydurma cevap veriyor.
 
-**Arayüz:** sohbet geçmişi, token token akan cevaplar (streaming) ve her cevabın
-altında **karar izi paneli** — boru hattının hangi kapıda ne karar verdiği,
-gerekçesiyle birlikte görünüyor.
+**Arayüz:** sohbet geçmişi, token token akan cevaplar (streaming), kenar çubuğunda
+bilgi tabanının içeriği (hangi doküman, kaç parça) ve her cevabın altında
+**karar izi paneli** — boru hattının hangi kapıda ne karar verdiği, gerekçesiyle
+birlikte görünüyor.
 
 Bilgi tabanını değiştirmek için `data/` klasöründeki `.txt` dosyalarını değiştirip
 `python ingest.py` çalıştırmak yeterli.
@@ -97,7 +98,7 @@ klasörüne `.txt` dosyaları koyup `python ingest.py`'ı tekrar çalıştırmak
 | `app.py` | Streamlit arayüzü + LLM entegrasyonu (RAG'ın "generate" adımı) |
 | `test_qa.py` | Fonksiyonel test seti — cevaplanabilir/cevaplanamaz sorularla doğrulama |
 | `ablation.py` | Ablasyon çalışması — her savunma katmanının katkısını ölçer |
-| `data/` | Bilgi tabanı — 10 Valorant dokümanı (.txt) |
+| `data/` | Bilgi tabanı — 15 Valorant dokümanı (.txt) |
 | `TEST_RESULTS.md` | Son test koşusunun sonuçları (otomatik üretilir) |
 | `ABLATION_RESULTS.md` | Ablasyon çalışmasının sonuçları (otomatik üretilir) |
 
@@ -139,13 +140,13 @@ orada kesin bir ölçüt yok.
 
 ## Test Sonuçları
 
-`data/` klasörü Valorant hakkında **10 doküman** (53 parça) içeriyor.
-`python test_qa.py` ile 14 soruluk bir ana test seti (10 cevaplanabilir +
+`data/` klasörü Valorant hakkında **15 doküman** (80 parça) içeriyor.
+`python test_qa.py` ile 19 soruluk bir ana test seti (15 cevaplanabilir +
 4 cevaplanamaz) ve ayrıca 3 uç durum vakası çalıştırılıyor:
 
-- **14 / 14 ana test geçti**
+- **19 / 19 ana test geçti** — her doküman en az bir soruyla kapsanıyor
 - **3 / 3 uç durum testi geçti** (boş sorgu, yalnızca boşluk, çok genel soru)
-- **Ortalama süre: ~1.5 saniye/soru** (temiz sunucu durumunda ölçüldü), hedeflenen
+- **Ortalama süre: 1.61 saniye/soru** (temiz sunucu durumunda ölçüldü), hedeflenen
   1-3 saniye aralığının içinde. Cevaplanamaz soruların çoğu **0.07 saniyede**
   reddediliyor, çünkü sözcüksel kapı hiçbir LLM çağrısı yapmadan karar veriyor.
 
@@ -255,33 +256,22 @@ geçmeyen özel isimler**. Model paraphrase yaparken yeni özel isim uydurmaz; o
 - **Çıktı temizleme:** Model bazen Türkçe cevap içine tek karakterlik CJK (Çince/Japonca/
   Korece) karakterler sıkıştırıyor (gözlemlenen bir küçük-model kusuru); bu karakterler
   cevap gösterilmeden önce regex ile temizleniyor.
-- **Sözcüksel kapı (hibrit arama) — konu kaymasının deterministik çözümü:**
-  Kosinüs benzerliği anlamsal yakınlık ölçer. Tek konulu bir korpusta bu, *"bu parça
-  soruyu cevaplıyor mu"*yu değil *"bu metin aynı konu hakkında mı"*yı ölçmeye başlar.
-  Eşik ayarı bu sorunu çözmez, çünkü eşik de aynı sinyale bakar.
+- **Sözcüksel kapı (hibrit arama):** Sorunun ayırt edici kelimelerinden en az biri
+  getirilen metinde geçmiyorsa, o metin bu soruyu cevaplıyor olamaz — kosinüs skoru
+  ne kadar yüksek görünürse görünsün. Gerekçesi ve ölçümü için yukarıdaki
+  [ablasyon bölümüne](#ablasyon-çalışması-her-katman-gerçekten-gerekli-mi) bakın.
 
-  Çözüm, **farklı bir sinyal** eklemekten geldi: sorunun ayırt edici kelimelerinden
-  en az biri getirilen metinde geçmiyorsa, o metin bu soruyu cevaplıyor olamaz.
-  Ölçülen örnek: `turnuva` ve `ödül` kelimeleri korpusta **hiç geçmiyor** — yani
-  sistemin bu soruyu cevaplayabilmesi mümkün değil, ne kadar "yakın" görünürse
-  görünsün. (Literatürde **hibrit arama**: yoğun/embedding + seyrek/sözcüksel.)
+  *"Ayırt edici"* tanımı kritik: `valorant` her dokümanda geçtiği için hiçbir şey
+  ayırt etmiyor, bu yüzden doküman frekansı yüksek kelimeler eleniyor (**IDF**
+  fikrinin sade bir uygulaması). Türkçe için iki uyarlama gerekti: karakter
+  normalizasyonu (dokümanlar Türkçe karaktersiz, kullanıcı `görevi` yazıyor) ve
+  kaba gövde karşılaştırması (sondan eklemeli dil: `turnuva` → `turnuvalarında`).
 
-  *"Ayırt edici"* tanımı kritik: `valorant` kelimesi her dokümanda geçtiği için
-  hiçbir şey ayırt etmiyor, bu yüzden doküman frekansı yüksek kelimeler eleniyor
-  (klasik **IDF** fikrinin sade bir uygulaması). Türkçe için iki uyarlama gerekti:
-  (1) dokümanlar Türkçe karaktersiz yazılmış ama kullanıcı arayüze `görevi` diye
-  yazıyor → iki taraf da normalize ediliyor; (2) Türkçe sondan eklemeli
-  (`turnuva` → `turnuvalarında`) → tam kelime yerine ilk 5 karakterlik kaba gövde
-  karşılaştırılıyor.
-
-  Kapı **toleranslı** tasarlandı: tek eşleşme yeterli. Amaç geçerli soruları elemek
-  değil, hiçbir sözcüksel dayanağı olmayanları yakalamak. Sorunun hiç ayırt edici
-  kelimesi yoksa ("Bana her şeyi anlat") kapı karar veremez ve geçirir.
-  Entegrasyondan önce tüm test sorularına karşı ayrı ayrı ölçüldü: **0 yanlış
-  eleme**, cevaplanamaz soruların hepsi elendi.
-
-  Kapı LLM çağrısından önce çalıştığı için ek bir kazanç da hız: cevaplanamaz
-  sorular saniyeler yerine **0.07 saniyede** reddediliyor.
+  Kapı **toleranslı**: tek eşleşme yeterli. Amaç geçerli soruları elemek değil,
+  hiçbir sözcüksel dayanağı olmayanları yakalamak. Sorunun hiç ayırt edici kelimesi
+  yoksa ("Bana her şeyi anlat") kapı karar veremez ve geçirir. Entegrasyondan önce
+  tüm test sorularına karşı ölçüldü: **0 yanlış eleme**. LLM çağrısından önce
+  çalıştığı için ek kazanç hız: cevaplanamaz sorular **0.08 saniyede** reddediliyor.
 
 - **Halüsinasyon karşı önlemi — üç bölgeli alaka kararı:** Sözcüksel kapıyı geçen
   parçalar için karar şöyle veriliyor:

@@ -1,0 +1,13 @@
+Valorant Zirh ve Hasar Sistemi
+
+Valorant'ta her oyuncu belirli bir can degeriyle tura baslar. Zirh (armor) bu canin uzerine eklenen ikinci bir katmandir ve alisveris asamasinda krediyle satin alinir. Zirh, gelen hasarin bir bolumunu emerek oyuncunun hayatta kalma suresini uzatir; bu yuzden ekonomi kararlarinda silah kadar onemlidir.
+
+Iki tur zirh vardir. Hafif zirh daha ucuzdur ve daha az koruma saglar; genellikle yari alim turlarinda tercih edilir. Agir zirh daha pahalidir ama koruma miktari belirgin sekilde yuksektir ve tam alim turlarinin standart parcasidir. Zirh tur sonunda tamamen yenilenmez; alinan hasar kadar eksilir ve bir sonraki turda tamamlanmasi icin tekrar odeme yapmak gerekebilir.
+
+Hasar miktari vurulan bolgeye gore degisir. Basa alinan isabet en yuksek hasari verir ve cogu ana silahla tek atista oldurucu olabilir. Govdeye alinan isabet orta duzeyde hasar verir. Bacaklara alinan isabet en dusuk hasari verir. Bu dagilim, nisangahin bas hizasinda tutulmasinin neden bu kadar onemli oldugunu dogrudan aciklar.
+
+Mesafe de hasari etkiler. Bazi silahlar belirli bir mesafeden sonra daha az hasar verir; bu yuzden bir silahin "iyi" olup olmadigi tek basina degil, kullanildigi mesafeyle birlikte degerlendirilir. Yakin mesafede cok etkili bir silah, uzun bir koridorda ayni sonucu vermez.
+
+Hasar aldiktan sonra can kendiliginden dolmaz. Tur icinde eksilen can, tur bitene kadar oyle kalir. Bu yuzden az canla kalan bir oyuncunun on safta oynamasi genellikle yanlistir; onun rolu bilgi vermek, arka bolgeleri tutmak veya takim arkadaslarina destek olmaktir. Ayni sebeple, az canla kalan bir rakibi zorlamak takim icin yuksek getirili bir hamledir.
+
+Zirh alma karari her turda yeniden verilir. Tabancayla oynanan bir tasarruf turunda zirh almak, bir sonraki turun tam alimini riske atabilir. Buna karsilik rakip takimin tam ekipmanla geldigi bir turda zirhsiz oynamak, catismalarin neredeyse tamamini kaybetmek anlamina gelir.

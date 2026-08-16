@@ -1,0 +1,13 @@
+Valorant Takim Kompozisyonu
+
+Bes kisilik bir takimin hangi rollerden olustugu, o takimin oynayabilecegi stratejileri dogrudan belirler. Kompozisyon, mac baslamadan once verilen ve turlar boyunca etkisi suren en buyuk karardir. Bireysel olarak guclu bes oyuncu, rolleri ortusuyorsa dengeli bir takimin gerisinde kalabilir.
+
+Dengeli bir kompozisyonun genel iskeleti sudur: gorus alanini kontrol eden en az bir controller, bolgeye guvenli giris saglayan bir initiator, bolge tutan bir sentinel ve catismayi baslatan bir veya iki duelist. Bu dagilim kesin bir kural degildir, ama her rolun sagladigi yetenegin bir karsiligi vardir ve eksik kalan rol turlar boyunca hissedilir.
+
+Controller eksikligi en cok saldirida hissedilir. Gorusu kesecek yetenek olmadan bir bolgeye girmek, savunan takimin tum acilarindan gorunur olmak demektir. Initiator eksikliginde takim, rakibin nerede oldugunu bilmeden girmek zorunda kalir ve ilk catismalari korlemesine oynar. Sentinel eksikligi savunmada arka bolgelerin bos kalmasina yol acar; takim surekli arkadan gelen rakiplerle ugrasir.
+
+Cok fazla duelist secmek yeni takimlarin en sik yaptigi hatadir. Duelist yetenekleri kendi girisini acmaya yoneliktir; bes duelist bir arada oldugunda kimse gorusu kesmez, kimse bilgi toplamaz ve takim her turu bes ayri bireysel catisma olarak oynar. Bu kompozisyon zaman zaman kazanir ama tutarli degildir.
+
+Kompozisyon secerken haritanin yapisi da hesaba katilir. Genis ve acik bolgeleri olan bir harita, gorus kesme yeteneklerine daha fazla ihtiyac duyar. Dar gecisleri olan bir harita ise bolge kapatan yeteneklerin degerini artirir.
+
+Pratik bir yaklasim: once takimin ihtiyaci olan rolu belirlemek, sonra o rol icinde rahat oynanan bir karakter secmek. Once karakter secip rolu sonradan dusunmek, kompozisyonun dengesiz kalmasinin en yaygin sebebidir.

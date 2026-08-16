@@ -677,6 +677,43 @@ h1 {{
 """
 
 
+@st.cache_data(show_spinner=False)
+def knowledge_base_summary() -> list[tuple[str, int]]:
+    """Bilgi tabanindaki her dokumanin adi ve parca sayisi."""
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT source, COUNT(*) FROM chunks GROUP BY source ORDER BY source"
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def render_knowledge_base() -> None:
+    """Kenar cubugunda bilgi tabaninin icerigini gosterir.
+
+    Asistan yalnizca bu dokumanlara dayanarak cevap verdigi icin, neyin
+    sorulabilecegini bilmek kullanicinin isini kolaylastiriyor; aksi halde
+    "bilmiyorum" cevaplari keyfi gorunuyor.
+    """
+    try:
+        documents = knowledge_base_summary()
+    except sqlite3.Error:
+        return
+    if not documents:
+        return
+
+    total = sum(count for _name, count in documents)
+    st.markdown(f"### Bilgi tabanı ({len(documents)} doküman)")
+    with st.expander(f"{total} parça · listeyi gör"):
+        for name, count in documents:
+            baslik = name.replace(".txt", "").replace("_", " ")
+            st.markdown(
+                f"<div style='font-size:0.8rem;opacity:0.8'>{baslik}"
+                f"<span style='opacity:0.5'> · {count} parça</span></div>",
+                unsafe_allow_html=True,
+            )
+
+
 def render_sidebar() -> None:
     """Kenar cubugu: model rozeti, ornek sorular, sohbet kontrolu."""
     with st.sidebar:
@@ -712,6 +749,8 @@ def render_sidebar() -> None:
             """,
             unsafe_allow_html=True,
         )
+
+        render_knowledge_base()
 
         st.markdown("### Örnek sorular")
         # Dugmeye basildiginda Streamlit zaten betigi bastan calistiriyor; soruyu
