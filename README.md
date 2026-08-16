@@ -449,3 +449,23 @@ Projede takip edilen kaynaklar:
 
 **Diğer:**
 - [SQLite resmi dokümantasyonu](https://www.sqlite.org/) — veritabanı motoru
+
+### Bilgi tabanı hakkında
+
+`data/` klasöründeki 15 doküman bu proje için yazıldı; herhangi bir kaynaktan
+kopyalanmadı. İçerik bilinçli olarak **yamadan bağımsız** tutuldu: ajan isimleri,
+harita listeleri, silah fiyatları ve benzeri sürümle değişen ayrıntılar yerine
+oyunun kalıcı mekanikleri anlatılıyor (ekonomi mantığı, rol işlevleri, tur akışı,
+konumlanma ilkeleri). Böylece bilgi tabanı her oyun güncellemesinde eskimiyor.
+
+Oyunla ilgili bilgileri doğrulamak veya bilgi tabanını genişletmek için resmî
+kaynaklar:
+
+- [VALORANT Beginner's Guide](https://playvalorant.com/en-us/news/announcements/beginners-guide/)
+  — Riot Games'in resmî başlangıç rehberi
+- [VALORANT Support](https://support-valorant.riotgames.com/hc/en-us)
+  — oyun mekanikleri ve sistemler hakkında resmî destek dokümantasyonu
+- [playvalorant.com](https://playvalorant.com/en-us/) — oyunun resmî sitesi
+
+Bilgi tabanını değiştirmek için `data/` klasörüne `.txt` dosyaları ekleyip
+`python ingest.py` çalıştırmak yeterli.

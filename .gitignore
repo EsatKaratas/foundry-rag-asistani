@@ -11,6 +11,7 @@ rag.db
 # PyCharm proje ayarlari
 .idea/
 
+# Yerel editor/arac yapilandirmalari
 .vscode/
 
 # Ic calisma notlari (devir raporu, eksik analizi). Diskte tutuluyor ama
