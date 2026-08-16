@@ -125,6 +125,34 @@ BAGLAM:
 
 NUMBER_PATTERN = re.compile(r"\d+")
 
+# Sistem promptunun 5. kuralinin istedigi kaynak satiri.
+SOURCE_CITATION_PATTERN = re.compile(r"\(\s*kaynak\s*:", re.IGNORECASE)
+
+
+def ensure_source_citation(answer: str, chunks: list[dict]) -> str:
+    """Cevabin sonunda kaynak satiri yoksa, kullanilan parcalardan uretip ekler.
+
+    Neden kodla: sistem promptunun 5. kurali modelden "(Kaynak: dosya.txt)"
+    satirini istiyor, ama olculdugunde model bunu cevaplarin yaklasik ucte
+    birinde atliyordu (6 cevaplanabilir sorudan 2'sinde). Kaynak dosya adi
+    retrieval asamasindan zaten elimizde oldugu icin bunu modele birakmak
+    gereksiz; projenin genelindeki karar burada da uygulaniyor: kesin
+    bilinen bir bilgi modelden istenmez, kodla yazilir.
+
+    Prompt kurali yine de duruyor - model kendiliginden dogru yazdiginda
+    bu fonksiyon hicbir sey yapmaz.
+    """
+    if not chunks:
+        return answer
+    if answer.strip() in (NO_INFO_MESSAGE, FALLBACK_MESSAGE):
+        return answer
+    if SOURCE_CITATION_PATTERN.search(answer):
+        return answer
+
+    # Ayni dosya birden fazla parcadan gelebilir; sirayi bozmadan tekillestir.
+    sources = list(dict.fromkeys(chunk["source"] for chunk in chunks))
+    return f"{answer.rstrip()}\n\n(Kaynak: {', '.join(sources)})"
+
 
 def has_ungrounded_numbers(context: str, answer: str) -> bool:
     """Cevapta, baglamda hic gecmeyen bir sayi var mi?
@@ -198,6 +226,17 @@ def retrieve_and_gate(question: str, k: int = 3):
     Doner: (system_prompt, kullanilan_parcalar, red_mesaji, baglam_metni)
     red_mesaji None degilse hicbir uretim yapilmamalidir.
     """
+    # 0. Kapi: bos / yalnizca bosluk iceren sorgu.
+    # Bu kontrol olmadan sorgu dogrudan embedding API'sine gidiyor ve Foundry
+    # Local bos girdiyi reddedip HTTP 400 donuyordu (olculdu:
+    # "Embedding input at index 0 is null, empty..."), bu da yakalanmayan bir
+    # exception olarak uygulamayi cokertiyordu. Arayuzden tetiklenmiyor cunku
+    # st.chat_input bos girdiyi gondermiyor; ancak fonksiyon dogrudan
+    # cagrildiginda (test, betik, ileride eklenecek bir API) cokuyordu.
+    # Kontrol answer_query yerine burada: hem akissiz hem akisli yol buradan gecer.
+    if not question or not question.strip():
+        return None, [], NO_INFO_MESSAGE, ""
+
     chunks = get_top_chunks(question, k=k)
 
     # 1. Kapi (ucuz): en iyi parca bile cok dusuk skorluysa, hicbir LLM cagrisi
@@ -250,7 +289,7 @@ def answer_query(question: str, k: int = 3) -> tuple[str, list[dict]]:
     if not is_answer_grounded(client, context, answer):
         return NO_INFO_MESSAGE, chunks
 
-    return answer, chunks
+    return ensure_source_citation(answer, chunks), chunks
 
 
 def stream_generation(system_prompt: str, question: str):
@@ -587,6 +626,14 @@ def main() -> None:
                 answer = NO_INFO_MESSAGE
                 slot.empty()
                 slot.markdown(answer)
+            else:
+                # Model kaynak satirini atlamis olabilir (olculdu: ~3 cevaptan
+                # 1'inde). Eksikse kodla ekleyip ekrandaki metni tazeliyoruz.
+                with_citation = ensure_source_citation(answer, chunks)
+                if with_citation != answer:
+                    answer = with_citation
+                    slot.empty()
+                    slot.markdown(answer)
 
         render_sources(chunks)
 

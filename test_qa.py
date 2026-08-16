@@ -11,6 +11,7 @@ yazilir.
 Calistirma: python test_qa.py
 """
 
+import re
 import time
 from datetime import datetime, timezone
 
@@ -43,6 +44,10 @@ TEST_CASES = [
 # test bunu hata olarak gormuyordu. Cevabin ICERIGINI de denetlemek gerekiyor.
 MAX_ANSWER_CHARS = 900
 VERBATIM_COPY_WINDOW = 120
+
+# Sistem promptunun 5. kuralinin istedigi kaynak satiri: "(Kaynak: dosya.txt)".
+# Bosluk ve buyuk/kucuk harf farklarina toleransli.
+SOURCE_CITATION_PATTERN = re.compile(r"\(\s*kaynak\s*:", re.IGNORECASE)
 
 
 def looks_like_verbatim_copy(answer: str, chunks: list[dict]) -> bool:
@@ -84,7 +89,48 @@ def evaluate(
     if looks_like_verbatim_copy(answer, chunks):
         return False, "KALITE: baglam metni oldugu gibi kopyalanmis"
 
-    return True, "cevap uretildi"
+    # Kaynak gosterimi: referans plan, degerlendirme olcutleri arasinda
+    # "Are sources cited?" sorusunu acikca soruyor. Sistem promptunun 5. kuralı
+    # cevabin sonuna "(Kaynak: dosya.txt)" satirini eklemeyi sart kosuyor;
+    # bu kuralin gercekten uygulanip uygulanmadigi burada dogrulaniyor.
+    if not SOURCE_CITATION_PATTERN.search(answer):
+        return False, "KALITE: kaynak gosterilmemis"
+
+    return True, "cevap uretildi + kaynak gosterildi"
+
+
+# Uc durum vakalari (referans plan, Hafta 5: "It handles edge cases (like empty
+# query input, or very general questions)").
+#
+# Bu vakalar bilincli olarak ANA test setinden ayri tutuluyor. Sebep: bu sorular
+# icin "dogru cevap" tek bir sey degil - plan yalnizca sistemin bunlari SAGLIKLI
+# KARSILAMASINI istiyor, belirli bir cevap sart kosmuyor. Ana sete konsalardi
+# ("bilmiyorum demeli" beklentisiyle) "Bana her seyi anlat" gibi genel bir soru
+# 0.30-0.75 gri bolgesine dusup alaka denetleyicisine gider ve GPU cikarimi tam
+# deterministik olmadigi icin sonuc kosudan kosuya degisebilirdi. Bu da test
+# setini kararsiz gosterirdi. Buradaki olcut daha net: COKMEDI + makul cevap.
+EDGE_CASES = [
+    ("", "bos sorgu"),
+    ("   ", "yalnizca bosluk"),
+    ("Bana her seyi anlat", "cok genel soru"),
+]
+
+
+def evaluate_edge_case(answer: str) -> tuple[bool, str]:
+    """Uc durum olcutu: cokme yok + bos olmayan, makul uzunlukta bir cevap.
+
+    Bos sorgunun neden ayrica onemli oldugu: duzeltmeden once bu girdi
+    dogrudan embedding API'sine gidiyor ve Foundry Local HTTP 400 donuyordu
+    ("Embedding input at index 0 is null, empty..."), yakalanmayan bir
+    exception olarak uygulamayi cokertiyordu.
+    """
+    if not answer or not answer.strip():
+        return False, "BEKLENMEDIK: bos cevap dondu"
+    if len(answer) > MAX_ANSWER_CHARS:
+        return False, f"KALITE: cevap cok uzun ({len(answer)} karakter)"
+    if answer.strip() in (NO_INFO_MESSAGE, FALLBACK_MESSAGE):
+        return True, "cokmedi, 'bilmiyorum' dondu"
+    return True, "cokmedi, cevap uretildi"
 
 
 def main() -> None:
@@ -117,6 +163,46 @@ def main() -> None:
     lines.append("")
     lines.append(f"**Toplam: {total_passed}/{len(TEST_CASES)} test gecti.**")
     lines.append(f"**Ortalama sure: {total_time / len(TEST_CASES):.2f} saniye/soru.**")
+    lines.append("")
+
+    # --- Uc durum testleri (ayri bolum) ---
+    lines.append("## Uc Durum Testleri")
+    lines.append("")
+    lines.append(
+        "Referans planin Hafta 5 maddesi: *\"It handles edge cases (like empty query "
+        "input, or very general questions)\"*. Olcut: uygulama cokmemeli ve makul bir "
+        "cevap donmeli (belirli bir cevap sart kosulmuyor)."
+    )
+    lines.append("")
+    lines.append("| # | Girdi | Tur | Sonuc | Sure (sn) | Not |")
+    lines.append("|---|-------|-----|-------|-----------|-----|")
+
+    edge_passed = 0
+    for i, (question, kind) in enumerate(EDGE_CASES, start=1):
+        start = time.perf_counter()
+        try:
+            answer, _chunks = answer_query(question)
+            crashed = False
+        except Exception as exc:  # noqa: BLE001 - testin amaci tam da bunu yakalamak
+            answer = ""
+            crashed = True
+            crash_note = f"COKTU: {type(exc).__name__}"
+        elapsed = time.perf_counter() - start
+
+        if crashed:
+            passed, note = False, crash_note
+        else:
+            passed, note = evaluate_edge_case(answer)
+        edge_passed += int(passed)
+
+        shown = repr(question) if not question.strip() else question
+        lines.append(
+            f"| {i} | {shown} | {kind} | {'GECTI' if passed else 'KALDI'} | "
+            f"{elapsed:.2f} | {note} |"
+        )
+
+    lines.append("")
+    lines.append(f"**Uc durum: {edge_passed}/{len(EDGE_CASES)} gecti.**")
     lines.append("")
     lines.append(
         "Referans dokuman hedefi: kucuk modeller icin ~1-3 saniye/soru. "

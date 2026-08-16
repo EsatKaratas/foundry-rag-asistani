@@ -10,3 +10,8 @@ rag.db
 
 # PyCharm proje ayarlari
 .idea/
+
+# Ic calisma notlari (devir raporu, eksik analizi). Diskte tutuluyor ama
+# repoya girmiyor: uclu kisi bilgisi iceriyor ve projenin teslim ciktisi degil.
+DURUM_RAPORU.md
+EKSIKLER_BILGI_PAKETI.md

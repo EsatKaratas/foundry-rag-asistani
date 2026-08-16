@@ -129,11 +129,20 @@ tarihler, isimler) kodla kontrol edilmelidir.
 ## Test Sonuçları
 
 `data/` klasörü Valorant hakkında 6 doküman içeriyor. `python test_qa.py` ile
-9 soruluk bir test seti (6 cevaplanabilir + 3 cevaplanamaz) çalıştırıldı:
+9 soruluk bir ana test seti (6 cevaplanabilir + 3 cevaplanamaz) ve ayrıca 3 uç
+durum vakası çalıştırıldı:
 
-- **8 / 9 test geçti**
-- **Ortalama süre: ~2.2 saniye/soru** — referans dokümanın hedeflediği 1-3 saniye
+- **8 / 9 ana test geçti**
+- **3 / 3 uç durum testi geçti** (boş sorgu, yalnızca boşluk, çok genel soru)
+- **Ortalama süre: 1.83 saniye/soru** — referans dokümanın hedeflediği 1-3 saniye
   aralığının içinde.
+
+**Uç durumlar neden ayrı bölümde:** bu girdiler için "doğru cevap" tek bir şey
+değil; referans plan yalnızca sistemin bunları sağlıklı karşılamasını istiyor,
+belirli bir cevap şart koşmuyor. Ölçüt: **çökmedi + makul cevap döndü**. Ana sete
+"bilmiyorum demeli" beklentisiyle konsalardı, "Bana her şeyi anlat" gibi genel bir
+soru 0.30-0.75 gri bölgesine düşüp alaka denetleyicisine gider ve GPU çıkarımı tam
+deterministik olmadığı için sonuç koşudan koşuya değişebilirdi.
 
 **Bilinen 1 sınır durum:** "Valorant turnuvalarında ödül havuzu ne kadar?" sorusuna
 sistem "bilmiyorum" demek yerine oyun içi ekonomi sistemini anlatıyor. Önemli nokta:
@@ -151,6 +160,18 @@ Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
   metin olarak saklanıyor, benzerlik hesaplaması (kosinüs) Python/NumPy ile brute-force
   yapılıyor. Küçük veri setleri (birkaç yüz parça) için yeterli; büyük ölçekte özel bir
   vektör indeksi (FAISS, pgvector vb.) gerekir.
+- **Neden `foundry-local-sdk` yerine `openai` istemcisi:** `foundry-local-sdk` kendini
+  *"control-plane SDK"* olarak tanımlıyor ve `FoundryLocalManager` sınıfı yalnızca
+  model/servis yönetimi metotları içeriyor (`discover_eps`,
+  `download_and_register_eps`, `start_web_service`, `stop_web_service`); **çıkarım
+  (inference) için hiçbir metodu yok** ve paketin kendi bağımlılıkları arasında zaten
+  `openai` var. Foundry Local servisi OpenAI-uyumlu bir yerel REST ucu açtığı için
+  (`http://127.0.0.1:<port>/v1`), çıkarım doğrudan `openai` istemcisiyle bu uca
+  yapılıyor — yani SDK atlanmış değil, SDK'nın da kullandığı çıkarım yolu doğrudan
+  kullanılıyor. Servis yönetimi (port keşfi, model yükleme) ise `foundry` CLI
+  üzerinden yapılıyor: servisin portu her başlatmada değişebiliyor, bu yüzden
+  `foundry server status -o json` çıktısındaki `webUrls` alanı okunuyor.
+
 - **`/no_think` yönergesi:** `qwen3-4b` bir "reasoning" modeli olduğu için varsayılan
   olarak cevaptan önce uzun bir iç düşünme adımı üretiyor. Bu hem yavaşlığa hem de
   (bazı sorularda) düşünme döngüsüne girip hiç bitirmeme riskine yol açtı. Sistem
@@ -184,3 +205,49 @@ Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
   bir sayı varsa cevap reddedilip "bilmiyorum" dönülüyor. Bu kontrol bilinçli olarak
   **deterministiktir** — LLM'e sorulan bir dayanak kontrolü denendi ve model kendi
   halüsinasyonunu onayladığı için başarısız oldu.
+
+- **Kaynak gösterimi de deterministik:** Sistem promptunun 5. kuralı modelden cevabın
+  sonuna `(Kaynak: dosya.txt)` satırını eklemesini istiyor. Teste bu kural için bir
+  doğrulama eklendiğinde ölçüldü ki **model bunu cevapların yaklaşık üçte birinde
+  atlıyor** (6 cevaplanabilir sorudan 2'sinde). Kaynak dosya adı retrieval aşamasından
+  zaten elimizde olduğu için, satır eksikse kodla ekleniyor
+  (`ensure_source_citation`). Prompt kuralı yine duruyor; model kendiliğinden doğru
+  yazdığında bu fonksiyon hiçbir şey yapmıyor. Aynı ilke: kesin bilinen bir bilgi
+  modelden istenmez, kodla yazılır.
+
+- **Uç durumlar:** Boş sorgu, yalnızca boşluk içeren sorgu ve çok genel sorular
+  `test_qa.py` içinde ayrı bir bölümde test ediliyor (3/3 geçti).
+
+- **Boş sorgu koruması:** Boş veya yalnızca boşluk içeren bir sorgu doğrudan embedding
+  API'sine gittiğinde Foundry Local HTTP 400 dönüyor
+  (`Embedding input at index 0 is null, empty...`) ve bu yakalanmayan bir exception
+  olarak uygulamayı çökertiyordu. Arayüzden tetiklenmiyordu (`st.chat_input` boş girdi
+  göndermiyor), ancak fonksiyon doğrudan çağrıldığında çöküyordu. Kontrol
+  `retrieve_and_gate()` başına konuldu — hem akışsız (test) hem akışlı (arayüz) yol
+  buradan geçiyor.
+
+## Kaynaklar
+
+Bu proje, Microsoft yaz okulu programının referans planına ("One-Month Project Plan:
+Local RAG AI Assistant with Microsoft Foundry Local") göre geliştirildi. Planın
+işaret ettiği kaynaklar:
+
+**Ana referans (topluluk içeriği):**
+- [Building Your First Local RAG Application with Foundry Local](https://techcommunity.microsoft.com/blog/azuredevcommunityblog/building-your-first-local-rag-application-with-foundry-local/4501968)
+  — Microsoft Tech Community
+
+**Resmi Microsoft Learn dokümantasyonu:**
+- [What is Foundry Local?](https://learn.microsoft.com/en-us/azure/foundry-local/what-is-foundry-local)
+- [Foundry Local dokümantasyonu](https://learn.microsoft.com/en-us/azure/foundry-local/)
+  — kurulum ve "Get started" adımları
+- [Tutorial: Build a RAG application](https://learn.microsoft.com/en-us/azure/foundry-local/tutorials/tutorial-build-rag-app)
+  — özellikle "Generate document embeddings" ve "Search for relevant documents"
+  bölümleri; bu projedeki `get_top_chunks()`, tutorial'daki `find_relevant()`
+  fonksiyonunun SQLite'a taşınmış hâli
+- [Prompt engineering techniques](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/prompt-engineering)
+  — sistem mesajı tasarımı ve prompt kurgusunun temelleri
+- [Tutorial: Use a SQLite database in a Windows app](https://learn.microsoft.com/en-us/windows/apps/develop/data-access/sqlite-data-access)
+  — SQLite'ın yerel depolama için avantajları
+
+**Diğer:**
+- [SQLite resmi dokümantasyonu](https://www.sqlite.org/) — veritabanı motoru
