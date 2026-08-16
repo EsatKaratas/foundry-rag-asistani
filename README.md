@@ -22,6 +22,28 @@ birlikte görünüyor.
 Bilgi tabanını değiştirmek için `data/` klasöründeki `.txt` dosyalarını değiştirip
 `python ingest.py` çalıştırmak yeterli.
 
+![Arayüz](docs/gorseller/arayuz.png)
+
+## Ekran Görüntüleri
+
+**Cevap ve karar izi.** Her cevabın altında boru hattının hangi kontrolde ne karar
+verdiği, gerekçesiyle birlikte görünüyor. Aşağıdaki örnekte son satır dikkat çekici:
+model kaynak satırını yazmayı atlamış, kod tamamlamış.
+
+![Cevap ve karar izi](docs/gorseller/cevap.png)
+
+**Dokümanlarda olmayan bir soru.** Kosinüs skoru **0.598** ile eşiği geçiyor, yani
+metin "alakalı" görünüyor — ama sorulan kelimelerin hiçbiri dokümanlarda yok ve
+sözcüksel kapı cevabı durduruyor. Kullanıcıya hangi kelimelerin eksik olduğu da
+söyleniyor.
+
+![Bilmiyorum cevabı](docs/gorseller/bilmiyorum.png)
+
+**Kaynak paneli.** Cevabın dayandığı parçalar, benzerlik skorlarıyla birlikte
+listeleniyor; sözcüksel kapının eşleştirdiği kelimeler metin içinde vurgulanıyor.
+
+![Kaynak paneli](docs/gorseller/kaynaklar.png)
+
 ## Mimari
 
 ```
