@@ -5,13 +5,13 @@ Microsoft Foundry Local, SQLite ve RAG (Retrieval-Augmented Generation) deseni k
 dayanarak soru cevaplar; internet bağlantısı, bulut hesabı veya API anahtarı
 gerektirmez, veri cihazdan çıkmaz.
 
-Projede en çok uğraştığım konu şu oldu: **dokümanlarda cevabı olmayan bir soru
-sorulunca ne oluyor?** Basit bir RAG kurgusunda model uydurmaya başlıyor. Bu yüzden
-soru, cevap üretilmeden önce üç, üretildikten sonra iki kontrolden geçiyor. Bu
-kontrollerin çoğu modele hiç soru sormuyor, kararı kod veriyor.
+Projenin odaklandığı asıl konu şu: **dokümanlarda cevabı olmayan bir soru
+sorulduğunda ne oluyor?** Basit bir RAG kurgusunda model uydurmaya başlıyor. Bu
+yüzden soru, cevap üretilmeden önce üç, üretildikten sonra iki kontrolden geçiyor.
+Bu kontrollerin çoğu modele hiç soru sormuyor; kararı kod veriyor.
 
-Her kontrolün gerçekten gerekli olup olmadığını
-[tek tek kapatıp ölçtüm](#ablasyon-çalışması-her-katman-gerçekten-gerekli-mi):
+Her kontrolün gerçekten gerekli olup olmadığı
+[tek tek kapatılarak ölçüldü](#ablasyon-çalışması-her-katman-gerçekten-gerekli-mi):
 hiç kontrol olmayan bir RAG, cevaplanamaz 4 sorudan 3'üne uydurma cevap veriyor.
 
 **Arayüz:** sohbet geçmişi, token token akan cevaplar (streaming), kenar çubuğunda
@@ -106,23 +106,23 @@ klasörüne `.txt` dosyaları koyup `python ingest.py`'ı tekrar çalıştırmak
 
 ## Tasarım İlkesi: kesin hesaplanabilen şeyi modele sorma
 
-Sistemdeki bütün kontroller tek bir fikirden çıktı. O fikre de üç şeyi deneyip
-başarısız olduklarını görerek vardım.
+Sistemdeki bütün kontroller tek bir ilkeden çıkıyor. Bu ilkeye, üç ayrı denemenin
+ölçülerek başarısız olması sonucunda ulaşıldı.
 
 **Popüler bir konu seçmek işi zorlaştırıyor.** Valorant çok bilinen bir oyun
 olduğu için model, dokümanlarda olmayan bilgiyi kendi eğitim verisinden
-verebiliyor: *"Valorant 2020'de çıktı"* — bilgi doğru ama benim dokümanlarımda
-yok. Cevap doğru göründüğü için de fark edilmesi zor.
+verebiliyor: *"Valorant 2020'de çıktı"* — bilgi doğru, ama dokümanlarda yok.
+Cevap doğru göründüğü için fark edilmesi de zor.
 
 **Kosinüs eşiği tek başına yetmedi.** Bütün dokümanlar aynı konu hakkında
 olduğunda skor, *"bu parça soruyu cevaplıyor mu"*yu değil *"bu metin Valorant
-hakkında mı"*yı ölçmeye başlıyor. Ölçtüğüm değerler: dokümanlarda cevabı olmayan
-sorular bile **0.53 - 0.60** alıyordu. Eşiği 0.50'den 0.75'e çektim ama asıl
-çözüm bu değildi.
+hakkında mı"*yı ölçmeye başlıyor. Ölçülen değerler: dokümanlarda cevabı olmayan
+sorular bile **0.53 - 0.60** alıyordu. Eşik 0.50'den 0.75'e çekildi, ancak asıl
+çözüm bu olmadı.
 
 **Modele kendi cevabını denetletmek işe yaramadı.** Üretimden sonra
-*"cevaptaki bilgi bağlamda geçiyor mu?"* diye soran bir kontrol ekledim, üç farklı
-promptla denedim:
+*"cevaptaki bilgi bağlamda geçiyor mu?"* diye soran bir kontrol eklendi ve üç
+farklı promptla denendi:
 
 | Denenen prompt | Sonuç |
 |---|---|
@@ -130,11 +130,11 @@ promptla denedim:
 | "Her şey metinde geçiyor mu?" | Geçerli cevapları da eledi |
 | "Uydurma var mı?" | Yeniden ifade edilmiş doğru cevapları uydurma sandı |
 
-Sebebi aslında basit: o bilgiyi zaten "bilen" model, kontrol yaparken de aynı
-hataya düşüyor. Aynı modelin kendi hatasını yakalamasını beklemek çalışmıyor.
+Sebebi basit: o bilgiyi zaten "bilen" model, kontrol yaparken de aynı hataya
+düşüyor. Aynı modelin kendi hatasını yakalaması beklenemez.
 
-**Vardığım sonuç:** kod ile kesin olarak hesaplanabilen hiçbir şeyi modelden
-istemedim. Bunu dört yerde uyguladım — sayı doğrulaması, özel isim dayanağı,
+**Varılan sonuç:** kodla kesin olarak hesaplanabilen hiçbir şey modelden
+istenmiyor. Bu ilke dört yerde uygulandı — sayı doğrulaması, özel isim dayanağı,
 sözcüksel kapı ve cevap uzunluğu. Model yalnızca gri bölgedeki alaka kararında
 kullanılıyor, çünkü orada kesin bir ölçüt yok.
 
@@ -194,17 +194,17 @@ katmanı tek tek kapatıp testi yeniden koşar:
 | Kosinüs eşiği kapalı | 19/19 | 0 vaka |
 | **Çıplak RAG** (hiç savunma yok) | **16/19** | **3 vaka** |
 
-Tablodan çıkardığım üç şey:
+Tablodan üç sonuç çıkıyor:
 
 **1. Kontrolsüz RAG, cevaplanamaz 4 sorudan 3'ünü kaybediyor.** Yani bu kontroller
 projenin süsü değil, çalışmasının şartı.
 
-**2. En çok katkıyı iki deterministik kontrol yapıyor.** Sözcüksel kapı ve özel
+**2. En büyük katkıyı iki deterministik kontrol sağlıyor.** Sözcüksel kapı ve özel
 isim kontrolü — ikisi de hiç LLM çağrısı yapmıyor.
 
-**3. Üç kontrol bu test setinde 0 vaka katıyor.** Bunu "silelim" diye okumadım;
-daha büyük ihtimalle **test setim o kontrollerin savunduğu hata tipini
-içermiyordu**. Nitekim tam da öyle bir açık buldum (aşağıda) ve teste ekledim.
+**3. Üç kontrol bu test setinde 0 vaka katıyor.** Bu sonuç "silinmeliler" anlamına
+gelmiyor; daha büyük ihtimalle **test seti o kontrollerin savunduğu hata tipini
+içermiyor**. Nitekim tam da böyle bir açık bulundu (aşağıda) ve teste eklendi.
 
 Bu tablo bilgi tabanı büyütülürken üç kez yeniden ölçüldü (6, 10 ve 15 doküman).
 Her katmanın kurtardığı vaka sayısı değişmedi — yani sonuçlar tek bir korpus
@@ -212,8 +212,8 @@ boyutuna özgü bir tesadüf değil.
 
 ### Ablasyonun bulduğu açık
 
-"LLM alaka denetleyicisi 0 vaka katıyor" sonucunu görünce katmanı silmek yerine
-şunu sordum: *bu katman neyi savunuyordu, testim onu ölçüyor mu?* Ölçmüyordu.
+"LLM alaka denetleyicisi 0 vaka katıyor" sonucu çıkınca katman silinmedi; önce şu
+soruldu: *bu katman neyi savunuyordu, test seti onu ölçüyor mu?* Ölçmüyordu.
 Eksik olan vaka şuydu — **kelimeleri dokümanlarda geçen ama cevabı geçmeyen soru**:
 
 ```
@@ -221,15 +221,15 @@ Soru : "Duelist rolündeki ajanların isimleri nelerdir?"
 Cevap: "Jett, Sage, Raze ve Breach'tir. (Kaynak: ajan_rolleri.txt)"
 ```
 
-Dokümanlarımda **hiçbir ajan ismi geçmiyor.** Sistem uydurdu, üstüne bir de kaynak
-gösterdi — yani yanlış bilgi güvenilir göründü (bilgi de ayrıca hatalı: Sage
+Dokümanlarda **hiçbir ajan ismi geçmiyor.** Sistem uydurdu, üstüne bir de kaynak
+gösterdi — yani yanlış bilgi güvenilir göründü (bilgi ayrıca hatalı: Sage
 sentinel, Breach initiator). Hiçbir kontrol yakalayamadı: sözcüksel kapı `duelist`
 eşleştiği için geçirdi, sayı kontrolü rakam olmadığı için göremedi.
 
-Çözümü sayı kontrolünü genişleterek buldum: **cevapta geçen ama bağlamda hiç
-geçmeyen özel isimler**. Model kendi cümlesiyle anlatırken yeni bir özel isim
-uydurmaz; ortaya çıkan bir isim varsa o bilgi bağlamdan gelmiyordur. Eklemeden
-önce geçerli cevaplara karşı denedim: **0 yanlış eleme**.
+Çözüm, sayı kontrolünün genişletilmesiyle bulundu: **cevapta geçen ama bağlamda
+hiç geçmeyen özel isimler**. Model kendi cümlesiyle anlatırken yeni bir özel isim
+uydurmaz; ortaya çıkan bir isim varsa o bilgi bağlamdan gelmiyordur. Eklenmeden
+önce geçerli cevaplara karşı denendi: **0 yanlış eleme**.
 
 ## Tasarım Kararları ve Kısıtlar
 
@@ -351,12 +351,12 @@ uydurmaz; ortaya çıkan bir isim varsa o bilgi bağlamdan gelmiyordur. Eklemede
 
 ## Karar İzi Paneli
 
-Geliştirirken en çok zorlandığım şey, sistemin neden öyle davrandığını görememekti:
-ekranda yalnızca cevap (ya da "bilmiyorum") beliriyor, o kararı **hangi kontrolün**
-verdiği görünmüyor. Kullanıcı açısından da aynı sorun var — "bilmiyorum" diyen bir
-asistan bakıp da mı bulamadı, yoksa hiç bakmadı mı?
+RAG boru hattı dışarıdan tamamen görünmez çalışır: ekranda yalnızca cevap (ya da
+"bilmiyorum") belirir, o kararı **hangi kontrolün** verdiği görünmez. Bu durum hem
+hata ayıklamayı zorlaştırıyor hem de kullanıcı açısından belirsizlik yaratıyor —
+"bilmiyorum" diyen bir asistan bakıp da mı bulamadı, yoksa hiç bakmadı mı?
 
-Bu yüzden her cevabın altına **🔍 Karar izi** panelini ekledim. Gerçek çıktılar:
+Bu yüzden her cevabın altına **🔍 Karar izi** paneli eklendi. Gerçek çıktılar:
 
 ```
 Soru: "Duelist rolünün görevi nedir?"
@@ -381,8 +381,8 @@ görünüyor.
 ## "Bilmiyorum" Neden Bilmiyorum
 
 "Bu bilgi elimdeki dokümanlarda yok" cevabı tek başına kullanıcıyı çıkmaza
-sokuyor: sorusu mu yanlış anlaşıldı, yoksa bilgi gerçekten yok mu, anlayamıyor.
-Sözcüksel kapı bu bilgiyi zaten hesapladığı için kullanıcıya da gösteriyorum:
+sokuyor: sorusu mu yanlış anlaşıldı, yoksa bilgi gerçekten yok mu, anlaşılmıyor.
+Sözcüksel kapı bu bilgiyi zaten hesapladığı için kullanıcıya da gösteriliyor:
 
 ```
 Soru: "Valorant turnuvalarında ödül havuzu ne kadar?"
@@ -448,9 +448,9 @@ Projede takip edilen kaynaklar:
 - [SQLite resmi dokümantasyonu](https://www.sqlite.org/) — veritabanı motoru
 
 **Yapay zekâ desteği:** Geliştirme sürecinde Claude (Anthropic) asistanından
-yararlandım — özellikle hata ayıklama, kod gözden geçirme ve dokümantasyon
-aşamalarında. README'deki bütün ölçümler bu makinede çalıştırılarak elde edildi;
-`python test_qa.py` ve `python ablation.py` ile yeniden üretilebilir.
+yararlanılmıştır; özellikle hata ayıklama, kod gözden geçirme ve dokümantasyon
+aşamalarında. Bu belgedeki bütün ölçümler bu makinede çalıştırılarak elde edilmiş
+olup `python test_qa.py` ve `python ablation.py` ile yeniden üretilebilir.
 
 ### Bilgi tabanı hakkında
 
