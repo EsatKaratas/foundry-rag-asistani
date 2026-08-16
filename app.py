@@ -11,10 +11,11 @@ Calistirma: streamlit run app.py
 """
 
 import re
+import sqlite3
 
 import streamlit as st
 
-from common import CHAT_MODEL, get_client
+from common import CHAT_MODEL, DB_PATH, EMBED_MODEL, get_client
 from retrieval import get_top_chunks
 
 # qwen3-4b bir "reasoning" modelidir: cevaptan once <think>...</think> icinde
@@ -22,11 +23,9 @@ from retrieval import get_top_chunks
 # icin bu blogu temizliyoruz.
 THINK_BLOCK_PATTERN = re.compile(r"<think>.*?</think>", re.DOTALL)
 
-# Test sirasinda gozlemlendi: bu kucuk/quantized model, Turkce cevap icinde bazen
-# tek tek CJK (Cince/Japonca/Korece) karakterler sikistiriyor (ornegin "bilgi检索
-# ederek" gibi) - bu, kucuk coklu-dil modellerinde bilinen bir token kusuru.
-# Prompt ile duzeltmeye calismak yerine (denendi, tam cozmedi), cikan cevabi
-# basitce temizliyoruz.
+# Model bazen Turkce cevap icine tek tek CJK karakterler sikistiriyor (kucuk
+# coklu-dil modellerinde bilinen bir kusur). Prompt ile cozulemedi, cikti
+# uzerinde temizliyoruz.
 CJK_PATTERN = re.compile(r"[一-鿿぀-ヿ가-힯]+")
 
 
@@ -37,56 +36,22 @@ FALLBACK_MESSAGE = (
 
 NO_INFO_MESSAGE = "Bu bilgi elimdeki dokumanlarda yok."
 
-# Alaka karari UC BOLGELI bir mantikla veriliyor. Bunun sebebi olculen su iki
-# gercek: (1) tek basina bir kosinus esigi yeterli degil, cunku cevaplanabilir ve
-# cevaplanamaz sorularin skor dagilimlari kismen cakisiyor; (2) her karari LLM'e
-# birakmak da yeterli degil, cunku GPU cikarimi tam deterministik olmadigindan
-# ayni soru farkli kosularda farkli sonuclanabiliyor (test sirasinda gozlemlendi).
-#
-# Cozum: skorun net oldugu durumlarda KOD karar veriyor (deterministik ve hizli),
-# sadece belirsiz "gri bolge" LLM denetleyicisine gidiyor.
-#
-#   skor >= HIGH_CONFIDENCE  -> kesin alakali (LLM'e sorulmaz)
+# Alaka karari uc bolgeli:
+#   skor >= HIGH_CONFIDENCE      -> kesin alakali (LLM'e sorulmaz)
 #   skor <  SIMILARITY_THRESHOLD -> kesin alakasiz (LLM'e sorulmaz)
-#   arada                    -> alaka denetleyicisine (grader) sorulur
-#
-# Olculen degerler: cevaplanabilir sorularin en iyi parca skorlari 0.37-0.71,
-# cevaplanamaz sorularinki 0.26-0.40 araliginda.
+#   arada                        -> alaka denetleyicisine sorulur
+# Gerekcesi ve olculen skor dagilimlari icin bkz. README.
 SIMILARITY_THRESHOLD = 0.30
 
-# ONEMLI DERS (Valorant dokumanlarina gecince ortaya cikti):
-# Bu esik KORPUSA BAGIMLIDIR ve dikkatli secilmelidir.
-#
-# Ilk deger 0.50 idi ve karisik konulu bir dokuman setinde (her dosya farkli bir
-# konu) dogru calisiyordu. Ama tum dokumanlar TEK BIR KONU hakkinda oldugunda
-# (hepsi Valorant), kosinus skoru artik "bu parca soruyu cevapliyor mu" degil,
-# sadece "bu metin Valorant hakkinda mi" bilgisini olcuyor. Sonuc: dokumanlarda
-# cevabi olmayan sorular (ornegin "Valorant hangi tarihte cikti?") bile 0.53-0.60
-# skorluyor, esigi asiyor, denetleyici hic calismadan kabul ediliyor ve model
-# kendi egitim bilgisinden uydurma cevap veriyordu.
-#
-# Bu yuzden esik yuksege cekildi: artik yalnizca gercekten cok yuksek skorlu
-# parcalar denetleyiciyi atlar, geri kalan her sey denetlenir.
+# DIKKAT: bu esik korpusa bagimlidir. Tek konulu bir dokuman setinde kosinus
+# skoru "soruyu cevapliyor mu" degil "bu konu hakkinda mi" olcer; bu yuzden
+# 0.50 yetersiz kaldi ve 0.75'e cekildi (ayrinti: README).
 HIGH_CONFIDENCE_THRESHOLD = 0.75
 
-# Alaka denetleyicisi (relevance grader) promptu.
-# Neden gerekli: kucuk dil modelleri "baglamda cevap yoksa cevap verme" gibi acik
-# uclu bir talimati guvenilir sekilde uygulayamiyor (test edildi, halusinasyon
-# yapabiliyor). Ama AYNI model, "bu metin bu soruyu cevapliyor mu? EVET/HAYIR"
-# seklindeki IKILI SINIFLANDIRMA gorevinde belirgin sekilde daha basarili.
-# Bu yuzden getirilen her parca once ayri ayri denetleniyor, sadece alakali
-# bulunanlar cevap uretimine gonderiliyor. (Bu yaklasim literaturde "retrieval
-# grading" / CRAG deseni olarak biliniyor.)
-#
-# ONEMLI (Valorant dokumanlarina gecince ortaya cikan bir zayiflik):
-# Bu promptun ilk surumu "baglam soruyu cevaplamak icin gerekli bilgiyi iceriyor
-# mu" diye soruyordu. Tum dokumanlar TEK BIR KONU hakkinda oldugunda bu soru
-# yetersiz kaliyor: denetleyici "bu metin Valorant hakkinda" ile "bu metin
-# sorunun cevabini iceriyor" ayrimini yapamiyor ve genel tanitim metinlerini de
-# alakali sayiyordu. Sonucta dokumanlarda olmayan sorular (ornegin oyunun cikis
-# tarihi) uretime gecip modelin kendi egitim bilgisinden cevaplanmasina yol
-# aciyordu. Duzeltme: soruda ISTENEN BILGININ metinde acikca gecip gecmedigini
-# sormak ve "ayni konu hakkinda olmak yetmez" kuralini acikca yazmak.
+# Alaka denetleyicisi (retrieval grading / CRAG deseni).
+# Kucuk modeller "cevap yoksa cevaplama" gibi acik uclu talimatta guvenilir
+# degil, ama EVET/HAYIR ikili siniflandirmada belirgin sekilde daha basarili.
+# "Ayni konu hakkinda olmak yetmez" kurali bilincli olarak eklendi (bkz. README).
 RELEVANCE_GRADER_PROMPT = """/no_think
 Asagidaki METIN, KULLANICI SORUSUNUN cevabini iceriyor mu?
 
@@ -133,13 +98,8 @@ def strip_reasoning(raw_answer: str) -> str:
     cleaned = CJK_PATTERN.sub("", without_think).strip()
     return cleaned if cleaned else FALLBACK_MESSAGE
 
-# NOT (test sirasinda bulunan gercek bir hata): Bu promptun ilk surumu modele
-# "hangi kaynak dosyadan yararlandigini belirt" diyordu ve baglam da
-# "[Kaynak: dosya]" bloklariyla veriliyordu. Model bunu "bloklari oldugu gibi
-# yaz" seklinde yorumlayip baglam metnini kelimesi kelimesine, tekrar tekrar
-# kopyaliyor ve token butcesi dolana kadar devam ediyordu (cevap hem yanlis
-# hem cok yavas oluyordu). Duzeltme: acik uzunluk siniri + "kopyalama" yasagi
-# + kaynak gosterimi icin dar, tek satirlik bir format.
+# Uzunluk siniri ve "kopyalama yasagi" kurallari bilincli: ilk surumde model
+# baglam metnini oldugu gibi tekrarlayip token butcesini tuketiyordu.
 SYSTEM_PROMPT_TEMPLATE = """/no_think
 Asagidaki BAGLAM bilgisini kullanarak kullanicinin sorusunu cevapla.
 
@@ -159,19 +119,9 @@ BAGLAM:
 """
 
 
-# Dayanak (groundedness) kontrolu.
-#
-# Neden gerekli: alaka denetleyicisi tek basina yeterli olmadi. Valorant gibi
-# POPULER bir konuda model, konuyu kendi egitim verisinden zaten biliyor. Bir
-# parca yanlislikla "alakali" sayilip uretime gecerse, model baglamda olmayan
-# bilgiyi kendi hafizasindan verebiliyor (ornegin oyunun cikis tarihi). Ustelik
-# 4B'lik bir modelin ikili karari kosudan kosuya degisebildigi icin denetleyiciyi
-# daha da sikilastirmak bu kararsizligi cozmuyor.
-#
-# Bu yuzden uretimden SONRA ikinci bir kontrol yapiyoruz: uretilen cevaptaki
-# bilgi gercekten baglamda geciyor mu? Gecmiyorsa cevap kullaniciya hic
-# gosterilmiyor. Bu, "modelin kendi bilgisinden cevaplamasi" hatasini dogrudan
-# hedefleyen bir savunmadir (literaturde "faithfulness / groundedness check").
+# Dayanak (groundedness) kontrolu: uretilen cevaptaki bilgi gercekten baglamda
+# geciyor mu? Populer bir konuda model, baglamda olmayan bilgiyi kendi egitim
+# verisinden verebiliyor; bu kontrol onu yakalamak icin.
 GROUNDEDNESS_PROMPT = """/no_think
 Asagida bir METIN ve bu metne dayanarak verildigi iddia edilen bir CEVAP var.
 
@@ -194,17 +144,9 @@ NUMBER_PATTERN = re.compile(r"\d+")
 def has_ungrounded_numbers(context: str, answer: str) -> bool:
     """Cevapta, baglamda hic gecmeyen bir sayi var mi?
 
-    Neden bu deterministik kontrol gerekli (olculen bir gercek):
-    LLM tabanli dayanak kontrolu tek basina YETMEDI. Model "Valorant 2020'de
-    cikti" diye baglamda olmayan bir bilgi uretti ve AYNI model bu cevabi
-    "dayanakli" diye onayladi. Sebebi acik: model o bilgiyi kendi egitim
-    verisinden bagimsiz olarak "biliyor", dolayisiyla kontrol katmani da ayni
-    yanilgiya dusuyor. Yani bir modelin halusinasyonunu ayni modele denetletmek
-    guvenilir degil.
-
-    Sayilar (tarih, fiyat, adet) halusinasyonun en sik goruldugu bilgi tipidir
-    ve modele hic sormadan, kodla kesin olarak dogrulanabilir. Cevapta baglamda
-    bulunmayan bir sayi varsa, o cevap dayanaksizdir.
+    Deterministik (modelden bagimsiz) bir kontrol. Gerekcesi: LLM tabanli dayanak
+    kontrolu tek basina yetmedi - model kendi halusinasyonunu "dayanakli" diye
+    onayladi. Sayilar kodla kesin dogrulanabildigi icin bu kontrol guvenilir.
     """
     context_numbers = set(NUMBER_PATTERN.findall(context))
     answer_numbers = set(NUMBER_PATTERN.findall(answer))
@@ -414,52 +356,125 @@ def render_sources(chunks: list[dict]) -> None:
     """Cevabin dayandigi dokuman parcalarini acilir bir panelde gosterir."""
     if not chunks:
         return
-    with st.expander("Kullanılan doküman parçaları (retrieval sonucu)"):
+    with st.expander(f"📄 Kaynaklar ({len(chunks)} parça)"):
         for i, chunk in enumerate(chunks, start=1):
-            st.markdown(
-                f"**[{i}] {chunk['source']}** — benzerlik skoru: {chunk['score']:.3f}"
+            st.markdown(f"**{i}. {chunk['source']}**")
+            # Skoru hem sayi hem gorsel cubuk olarak gosteriyoruz; kosinus
+            # benzerligi 0-1 arasinda oldugu icin dogrudan progress'e verilebilir.
+            st.progress(
+                min(max(chunk["score"], 0.0), 1.0),
+                text=f"benzerlik: {chunk['score']:.3f}",
             )
-            st.text(chunk["content"])
+            st.caption(chunk["content"])
+            if i < len(chunks):
+                st.divider()
+
+
+SAMPLE_QUESTIONS = [
+    "Valorant kaç kişiyle oynanır?",
+    "Duelist rolünün görevi nedir?",
+    "Eco turu ne demek?",
+    "Tepme kontrolü nedir?",
+]
+
+
+def render_sidebar() -> None:
+    """Kenar cubugu: bilgi tabani istatistikleri, model bilgisi, ornek sorular."""
+    with st.sidebar:
+        st.markdown("### ⚙️ Sistem")
+
+        # Bilgi tabani istatistikleri dogrudan veritabanindan okunuyor.
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            chunk_count = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+            doc_count = conn.execute(
+                "SELECT COUNT(DISTINCT source) FROM chunks"
+            ).fetchone()[0]
+            conn.close()
+        except sqlite3.Error:
+            chunk_count = doc_count = 0
+
+        col1, col2 = st.columns(2)
+        col1.metric("Doküman", doc_count)
+        col2.metric("Parça", chunk_count)
+
+        st.caption(f"💬 Sohbet: `{CHAT_MODEL}`")
+        st.caption(f"🔎 Embedding: `{EMBED_MODEL}`")
+        st.caption("🔌 Çevrimdışı — hiçbir veri dışarı çıkmaz")
+
+        st.divider()
+        st.markdown("### 💡 Örnek sorular")
+        # Dugmeye basildiginda Streamlit zaten betigi bastan calistiriyor; soruyu
+        # oturum durumuna yaziyoruz, main() asagida onu okuyup isliyor.
+        for sample in SAMPLE_QUESTIONS:
+            if st.button(sample, use_container_width=True, key=f"ornek_{sample}"):
+                st.session_state.pending_question = sample
+
+        st.divider()
+        soru_sayisi = sum(1 for m in st.session_state.messages if m["role"] == "user")
+        st.caption(f"Bu oturumda {soru_sayisi} soru soruldu.")
+        if st.button("🗑️ Sohbeti temizle", use_container_width=True):
+            st.session_state.messages = []
+            st.rerun()
 
 
 def main() -> None:
-    st.set_page_config(page_title="Yerel RAG Asistani", page_icon="🤖")
-    st.title("🤖 Yerel Doküman Asistanı")
-    st.caption("Foundry Local + SQLite + RAG — tamamen çevrimdışı çalışır.")
+    st.set_page_config(
+        page_title="Valorant Bilgi Asistanı",
+        page_icon="🎯",
+        initial_sidebar_state="expanded",
+    )
 
     # Sohbet gecmisi Streamlit'in oturum durumunda (session_state) tutuluyor.
     # Streamlit her etkilesimde tum betigi bastan calistirdigi icin, gecmisi
     # burada saklamazsak her soruda onceki mesajlar kaybolurdu.
     if "messages" not in st.session_state:
         st.session_state.messages = []
+    if "pending_question" not in st.session_state:
+        st.session_state.pending_question = None
 
-    with st.sidebar:
-        st.subheader("Sohbet")
-        st.caption(f"Bu oturumda {len(st.session_state.messages) // 2} soru soruldu.")
-        if st.button("Sohbeti temizle"):
-            st.session_state.messages = []
-            st.rerun()
+    st.title("🎯 Valorant Bilgi Asistanı")
+    st.caption(
+        "Foundry Local + SQLite + RAG — tamamen çevrimdışı çalışan yerel soru-cevap asistanı"
+    )
+
+    render_sidebar()
+
+    # Sohbet bostayken kisa bir yonlendirme gosteriyoruz.
+    if not st.session_state.messages:
+        st.info(
+            "Bu asistan yalnızca `data/` klasöründeki dokümanlara dayanarak cevap verir. "
+            "Dokümanlarda olmayan bir soru sorarsanız bilmediğini söyler — "
+            "soldaki örnek sorulardan biriyle deneyebilirsiniz."
+        )
 
     # Onceki mesajlari yeniden ciz.
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
+        with st.chat_message(message["role"], avatar=message.get("avatar")):
             st.markdown(message["content"])
             if message["role"] == "assistant":
                 render_sources(message.get("chunks", []))
 
+    # Soru ya sohbet kutusundan ya da kenar cubugundaki ornek dugmesinden gelir.
     question = st.chat_input("Sorunuzu yazın...")
+    if st.session_state.pending_question:
+        question = st.session_state.pending_question
+        st.session_state.pending_question = None
+
     if not question:
         return
 
-    st.session_state.messages.append({"role": "user", "content": question})
-    with st.chat_message("user"):
+    st.session_state.messages.append(
+        {"role": "user", "content": question, "avatar": "🧑"}
+    )
+    with st.chat_message("user", avatar="🧑"):
         st.markdown(question)
 
     # Retrieval ve alaka denetimi burada, TEK SEFER yapiliyor.
     with st.spinner("Dokümanlar taranıyor..."):
         system_prompt, chunks, refusal, context = retrieve_and_gate(question)
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar="🎯"):
         if refusal is not None:
             # Dokumanlarda cevap yok: hicbir uretim yapmadan mesaji gosteriyoruz.
             answer = refusal
@@ -480,7 +495,7 @@ def main() -> None:
         render_sources(chunks)
 
     st.session_state.messages.append(
-        {"role": "assistant", "content": answer, "chunks": chunks}
+        {"role": "assistant", "content": answer, "chunks": chunks, "avatar": "🎯"}
     )
 
 
