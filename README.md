@@ -9,8 +9,9 @@ kullanılıyor (oyun temelleri, ajan rolleri, ekonomi sistemi, silah kategoriler
 harita yapısı, yeni başlayan rehberi). Bilgi tabanını değiştirmek için `data/`
 klasöründeki `.txt` dosyalarını değiştirip `python ingest.py` çalıştırmak yeterli.
 
-**Arayüz özellikleri:** sohbet geçmişi (oturum boyunca önceki sorular korunur) ve
-cevabın token token akması (streaming).
+**Arayüz özellikleri:** sohbet geçmişi (oturum boyunca önceki sorular korunur),
+cevabın token token akması (streaming) ve **karar izi paneli** — her cevabın altında
+boru hattının hangi kapıda ne karar verdiği, gerekçesiyle birlikte görünür.
 
 Bu proje, Microsoft'un yaz stajı/yaz okulu programı kapsamında, "Building Your First
 Local RAG Application with Foundry Local" referans dokümanına göre geliştirilmiştir.
@@ -328,6 +329,35 @@ geçmeyen özel isimler**. Model paraphrase yaparken yeni özel isim uydurmaz; o
   göndermiyor), ancak fonksiyon doğrudan çağrıldığında çöküyordu. Kontrol
   `retrieve_and_gate()` başına konuldu — hem akışsız (test) hem akışlı (arayüz) yol
   buradan geçiyor.
+
+## Karar İzi Paneli
+
+Bir RAG boru hattı kullanıcı için tamamen görünmezdir: ekranda yalnızca cevap
+(ya da "bilmiyorum") belirir, o kararı **hangi katmanın** verdiği görünmez. Bu da
+sistemi hem hata ayıklaması zor hem de güvenilmesi zor hale getirir — "bilmiyorum"
+diyen bir asistan, düşünüp bilmediğine mi karar verdi yoksa hiç bakmadı mı?
+
+Her cevabın altındaki **🔍 Karar izi** paneli bunu açıyor. Gerçek çıktılar:
+
+```
+Soru: "Duelist rolünün görevi nedir?"
+  ✅ Getirme               3 parça getirildi · en yüksek skor 0.569
+  ✅ 1. Kosinüs eşiği      0.569 ≥ 0.3
+  ✅ 2. Sözcüksel dayanak  eşleşen: dueli (aranan: dueli, rolun)
+  ✅ 3. Alaka denetleyicisi 3/3 parça kabul · 3 tanesi LLM'e soruldu
+  ✅ 4. Dayanak kontrolü   cevaptaki sayı ve özel isimler bağlamda geçiyor
+  ➖ 6. Kaynak satırı      model kaynağı yazmamıştı — kodla eklendi
+
+Soru: "Valorant turnuvalarında ödül havuzu ne kadar?"
+  ✅ Getirme               3 parça getirildi · en yüksek skor 0.598
+  ✅ 1. Kosinüs eşiği      0.598 ≥ 0.3
+  ⛔ 2. Sözcüksel dayanak  aranan: turnu, odul, havuz — hiçbiri metinde geçmiyor
+```
+
+İkinci örnek, kosinüs benzerliğinin neden tek başına yetmediğini tek bakışta
+gösteriyor: skor **0.598** ile gayet "alakalı" görünüyor, ama sorulan kelimelerin
+hiçbiri metinde yok. Panel ayrıca hangi kararların **hiç LLM çağrısı yapmadan**
+verildiğini de görünür kılıyor.
 
 ## İşletim Notu — GPU belleği ve süre ölçümü
 

@@ -16,7 +16,11 @@ import sqlite3
 import streamlit as st
 
 from common import CHAT_MODEL, DB_PATH, EMBED_MODEL, get_client
-from lexical_gate import has_lexical_support, ungrounded_proper_nouns
+from lexical_gate import (
+    has_lexical_support,
+    lexical_support_detail,
+    ungrounded_proper_nouns,
+)
 from retrieval import get_top_chunks
 
 # qwen3-4b bir "reasoning" modelidir: cevaptan once <think>...</think> icinde
@@ -285,11 +289,22 @@ def build_context(chunks: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-def retrieve_and_gate(question: str, k: int = 3):
+def _log(trace, gate: str, passed: bool | None, detail: str) -> None:
+    """Karar izine bir adim ekler (trace None ise hicbir sey yapmaz)."""
+    if trace is None:
+        return
+    trace.append({"kapi": gate, "gecti": passed, "detay": detail})
+
+
+def retrieve_and_gate(question: str, k: int = 3, trace: list | None = None):
     """RAG'in "getir + alaka denetle" asamasi.
 
     Hem akissiz (answer_query) hem akisli (stream_answer) yol ayni mantigi
     kullansin diye ayri bir fonksiyona alindi.
+
+    trace: verilirse, her kapinin karari bu listeye yazilir. Arayuz bunu
+    "karar izi" panelinde gosteriyor. Isteğe bagli tutuldu ki mevcut
+    cagiranlarin (testler dahil) imzasi degismesin.
 
     Doner: (system_prompt, kullanilan_parcalar, red_mesaji, baglam_metni)
     red_mesaji None degilse hicbir uretim yapilmamalidir.
@@ -303,6 +318,7 @@ def retrieve_and_gate(question: str, k: int = 3):
     # cagrildiginda (test, betik, ileride eklenecek bir API) cokuyordu.
     # Kontrol answer_query yerine burada: hem akissiz hem akisli yol buradan gecer.
     if not question or not question.strip():
+        _log(trace, "0. Boş sorgu", False, "sorgu boş — hiçbir işlem yapılmadı")
         return None, [], NO_INFO_MESSAGE, ""
 
     chunks = get_top_chunks(question, k=k)
@@ -310,9 +326,31 @@ def retrieve_and_gate(question: str, k: int = 3):
     # 1. Kapi (ucuz): en iyi parca bile cok dusuk skorluysa, hicbir LLM cagrisi
     # yapmadan eliyoruz.
     if not chunks:
+        _log(trace, "Getirme", False, "veritabanında parça yok")
         return None, chunks, NO_INFO_MESSAGE, ""
+
+    _log(
+        trace,
+        "Getirme",
+        True,
+        f"{len(chunks)} parça getirildi · en yüksek skor {chunks[0]['score']:.3f}",
+    )
+
     if ENABLE_SIMILARITY_GATE and chunks[0]["score"] < SIMILARITY_THRESHOLD:
+        _log(
+            trace,
+            "1. Kosinüs eşiği",
+            False,
+            f"{chunks[0]['score']:.3f} < {SIMILARITY_THRESHOLD} — LLM'e hiç gidilmedi",
+        )
         return None, chunks, NO_INFO_MESSAGE, ""
+
+    _log(
+        trace,
+        "1. Kosinüs eşiği",
+        True,
+        f"{chunks[0]['score']:.3f} ≥ {SIMILARITY_THRESHOLD}",
+    )
 
     # 2. Kapi (sozcuksel): kosinus benzerliginin yapisal olarak goremedigi
     # hatayi yakalar. Sorunun ayirt edici kelimelerinden hicbiri getirilen
@@ -324,8 +362,17 @@ def retrieve_and_gate(question: str, k: int = 3):
     # daha hizli. Ayrinti: lexical_gate.py
     if ENABLE_LEXICAL_GATE:
         retrieved_text = "\n".join(chunk["content"] for chunk in chunks)
-        if not has_lexical_support(question, retrieved_text):
+        supported, stems, matched = lexical_support_detail(question, retrieved_text)
+        if not stems:
+            _log(trace, "2. Sözcüksel dayanak", None,
+                 "sorunun ayırt edici kelimesi yok — karar sonraki kapıya bırakıldı")
+        elif not supported:
+            _log(trace, "2. Sözcüksel dayanak", False,
+                 f"aranan: {', '.join(stems)} — hiçbiri metinde geçmiyor")
             return None, chunks, NO_INFO_MESSAGE, ""
+        else:
+            _log(trace, "2. Sözcüksel dayanak", True,
+                 f"eşleşen: {', '.join(matched)} (aranan: {', '.join(stems)})")
 
     client = get_client()
 
@@ -333,16 +380,32 @@ def retrieve_and_gate(question: str, k: int = 3):
     # Skoru yeterince yuksek olanlari dogrudan kabul ediyoruz (LLM'e sormadan);
     # sadece gri bolgedekiler icin alaka denetleyicisini calistiriyoruz.
     relevant_chunks = []
+    auto_accepted = 0
+    asked_to_llm = 0
     for chunk in chunks:
         if not ENABLE_RELEVANCE_GRADER:
             relevant_chunks.append(chunk)
         elif chunk["score"] >= HIGH_CONFIDENCE_THRESHOLD:
+            auto_accepted += 1
             relevant_chunks.append(chunk)
-        elif is_chunk_relevant(client, question, chunk["content"]):
-            relevant_chunks.append(chunk)
+        else:
+            asked_to_llm += 1
+            if is_chunk_relevant(client, question, chunk["content"]):
+                relevant_chunks.append(chunk)
 
     if not relevant_chunks:
+        _log(trace, "3. Alaka denetleyicisi", False,
+             f"{asked_to_llm} parça LLM'e soruldu, hiçbiri kabul edilmedi")
         return None, chunks, NO_INFO_MESSAGE, ""
+
+    _log(
+        trace,
+        "3. Alaka denetleyicisi",
+        True,
+        f"{len(relevant_chunks)}/{len(chunks)} parça kabul · "
+        f"{auto_accepted} tanesi skoru ≥ {HIGH_CONFIDENCE_THRESHOLD} olduğu için "
+        f"LLM'e sorulmadan · {asked_to_llm} tanesi LLM'e soruldu",
+    )
 
     context = build_context(relevant_chunks)
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
@@ -457,6 +520,28 @@ def stream_generation(system_prompt: str, question: str):
     # anlasilir bir mesaj gosteriyoruz.
     if not thinking_handled:
         yield FALLBACK_MESSAGE
+
+
+def render_trace(trace: list[dict]) -> None:
+    """Boru hattinin karar izini gosterir.
+
+    NEDEN: RAG boru hatti kullanici icin tamamen gorunmez - ekranda yalnizca
+    cevap (ya da "bilmiyorum") beliriyor, o karari HANGI katmanin verdigi
+    gorunmuyor. Bu panel her kapinin kararini ve gerekcesini aciyor; sistemin
+    "bilmiyorum" demesi de artik bir kara kutu degil, izlenebilir bir karar.
+    """
+    if not trace:
+        return
+
+    icons = {True: "✅", False: "⛔", None: "➖"}
+    with st.expander(f"🔍 Karar izi ({len(trace)} adım)"):
+        for step in trace:
+            icon = icons.get(step["gecti"], "➖")
+            st.markdown(
+                f"{icon} **{step['kapi']}** — "
+                f"<span style='opacity:0.75'>{step['detay']}</span>",
+                unsafe_allow_html=True,
+            )
 
 
 def render_sources(chunks: list[dict]) -> None:
@@ -670,6 +755,7 @@ def main() -> None:
                 st.markdown("<span class='bot-msg'></span>", unsafe_allow_html=True)
             st.markdown(message["content"])
             if message["role"] == "assistant":
+                render_trace(message.get("trace", []))
                 render_sources(message.get("chunks", []))
 
     # Soru ya sohbet kutusundan ya da kenar cubugundaki ornek dugmesinden gelir.
@@ -690,8 +776,12 @@ def main() -> None:
         st.markdown(question)
 
     # Retrieval ve alaka denetimi burada, TEK SEFER yapiliyor.
+    # trace: her kapinin karari buraya yaziliyor, asagida panelde gosteriliyor.
+    trace: list[dict] = []
     with st.spinner("Dokümanlar taranıyor..."):
-        system_prompt, chunks, refusal, context = retrieve_and_gate(question)
+        system_prompt, chunks, refusal, context = retrieve_and_gate(
+            question, trace=trace
+        )
 
     with st.chat_message("assistant", avatar=BOT_AVATAR):
         st.markdown("<span class='bot-msg'></span>", unsafe_allow_html=True)
@@ -707,21 +797,46 @@ def main() -> None:
             with slot.container():
                 answer = st.write_stream(stream_generation(system_prompt, question))
 
-            if not is_answer_grounded(get_client(), context, answer):
+            # Uretim sonrasi deterministik kontroller - hepsi ize yaziliyor.
+            bad_numbers = ENABLE_GROUNDEDNESS_CHECK and has_ungrounded_numbers(
+                context, answer
+            )
+            bad_names = ENABLE_PROPER_NOUN_CHECK and ungrounded_proper_nouns(
+                context, answer
+            )
+
+            if bad_numbers or bad_names:
+                reason = (
+                    "bağlamda geçmeyen sayı var"
+                    if bad_numbers
+                    else f"bağlamda geçmeyen özel isim: {', '.join(bad_names)}"
+                )
+                _log(trace, "4. Dayanak kontrolü", False,
+                     f"{reason} — cevap reddedildi")
                 answer = NO_INFO_MESSAGE
                 slot.empty()
                 slot.markdown(answer)
             else:
-                # Akis bittikten sonra iki deterministik duzeltme: cumle
-                # sinirini uygula ve kaynak satiri eksikse ekle (olculdu:
-                # model kaynagi ~3 cevaptan 1'inde atliyor). Degisiklik varsa
-                # ekrandaki metni tazeliyoruz.
-                finalized = ensure_source_citation(limit_answer(answer), chunks)
+                _log(trace, "4. Dayanak kontrolü", True,
+                     "cevaptaki sayı ve özel isimler bağlamda geçiyor")
+
+                shortened = limit_answer(answer)
+                if shortened != answer:
+                    _log(trace, "5. Uzunluk sınırı", None,
+                         f"{len(answer)} → {len(shortened)} karakter (en fazla "
+                         f"{MAX_SENTENCES} birim / {MAX_ANSWER_CHARS} karakter)")
+
+                finalized = ensure_source_citation(shortened, chunks)
+                if finalized != shortened:
+                    _log(trace, "6. Kaynak satırı", None,
+                         "model kaynağı yazmamıştı — kodla eklendi")
+
                 if finalized != answer:
                     answer = finalized
                     slot.empty()
                     slot.markdown(answer)
 
+        render_trace(trace)
         render_sources(chunks)
 
     # Cevap tamamlandi: soru ve cevabi birlikte gecmise yaziyoruz.
@@ -729,7 +844,13 @@ def main() -> None:
         {"role": "user", "content": question, "avatar": USER_AVATAR}
     )
     st.session_state.messages.append(
-        {"role": "assistant", "content": answer, "chunks": chunks, "avatar": BOT_AVATAR}
+        {
+            "role": "assistant",
+            "content": answer,
+            "chunks": chunks,
+            "trace": trace,
+            "avatar": BOT_AVATAR,
+        }
     )
 
 

@@ -126,6 +126,23 @@ def discriminative_stems(question: str) -> list[str]:
     return stems
 
 
+def lexical_support_detail(question: str, context: str) -> tuple[bool, list[str], list[str]]:
+    """has_lexical_support ile ayni karar, ama gerekcesiyle birlikte.
+
+    Arayuzdeki karar izi panelinde "hangi kelimeler arandi, hangileri bulundu"
+    gosterilebilsin diye ayrildi.
+
+    Doner: (destek_var_mi, aranan_govdeler, eslesen_govdeler)
+    """
+    stems = discriminative_stems(question)
+    if not stems:
+        return True, [], []
+
+    context_stems = {_stem(token) for token in _tokens(context)}
+    matched = [stem for stem in stems if stem in context_stems]
+    return bool(matched), stems, matched
+
+
 def has_lexical_support(question: str, context: str) -> bool:
     """Sorunun ayirt edici kelimelerinden en az biri baglamda geciyor mu?
 

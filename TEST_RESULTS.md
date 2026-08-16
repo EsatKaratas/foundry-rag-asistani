@@ -1,20 +1,20 @@
-# Test Sonuclari — 2026-08-16T14:40:47.270642+00:00
+# Test Sonuclari — 2026-08-16T14:52:37.203919+00:00
 
 | # | Soru | Beklenen | Sonuc | Sure (sn) | Not |
 |---|------|----------|-------|-----------|-----|
-| 1 | Valorant kac kisiyle oynanir? | cevaplanabilir | GECTI | 2.50 | cevap uretildi + kaynak gosterildi |
-| 2 | Duelist rolunun gorevi nedir? | cevaplanabilir | GECTI | 2.14 | cevap uretildi + kaynak gosterildi |
-| 3 | Eco turu ne demek? | cevaplanabilir | GECTI | 1.76 | cevap uretildi + kaynak gosterildi |
-| 4 | Keskin nisanci tufeklerinin dezavantaji nedir? | cevaplanabilir | GECTI | 1.81 | cevap uretildi + kaynak gosterildi |
-| 5 | Orta bolgeyi kontrol etmek neden onemli? | cevaplanabilir | GECTI | 1.94 | cevap uretildi + kaynak gosterildi |
-| 6 | Yeni baslayan biri ajan secerken neye dikkat etmeli? | cevaplanabilir | GECTI | 2.07 | cevap uretildi + kaynak gosterildi |
+| 1 | Valorant kac kisiyle oynanir? | cevaplanabilir | GECTI | 2.51 | cevap uretildi + kaynak gosterildi |
+| 2 | Duelist rolunun gorevi nedir? | cevaplanabilir | GECTI | 1.91 | cevap uretildi + kaynak gosterildi |
+| 3 | Eco turu ne demek? | cevaplanabilir | GECTI | 1.80 | cevap uretildi + kaynak gosterildi |
+| 4 | Keskin nisanci tufeklerinin dezavantaji nedir? | cevaplanabilir | GECTI | 1.65 | cevap uretildi + kaynak gosterildi |
+| 5 | Orta bolgeyi kontrol etmek neden onemli? | cevaplanabilir | GECTI | 1.67 | cevap uretildi + kaynak gosterildi |
+| 6 | Yeni baslayan biri ajan secerken neye dikkat etmeli? | cevaplanabilir | GECTI | 2.31 | cevap uretildi + kaynak gosterildi |
 | 7 | Valorant hangi tarihte cikti? | cevaplanamaz | GECTI | 0.06 | dogru sekilde 'bilmiyorum' dedi |
 | 8 | Valorant turnuvalarinda odul havuzu ne kadar? | cevaplanamaz | GECTI | 0.06 | dogru sekilde 'bilmiyorum' dedi |
 | 9 | Bugun hava nasil? | cevaplanamaz | GECTI | 0.06 | dogru sekilde 'bilmiyorum' dedi |
-| 10 | Duelist rolundeki ajanlarin isimleri nelerdir? | cevaplanamaz | GECTI | 1.86 | dogru sekilde 'bilmiyorum' dedi |
+| 10 | Duelist rolundeki ajanlarin isimleri nelerdir? | cevaplanamaz | GECTI | 2.06 | dogru sekilde 'bilmiyorum' dedi |
 
 **Toplam: 10/10 test gecti.**
-**Ortalama sure: 1.43 saniye/soru.**
+**Ortalama sure: 1.41 saniye/soru.**
 
 ## Uc Durum Testleri
 
@@ -24,7 +24,7 @@ Referans planin Hafta 5 maddesi: *"It handles edge cases (like empty query input
 |---|-------|-----|-------|-----------|-----|
 | 1 | '' | bos sorgu | GECTI | 0.00 | cokmedi, 'bilmiyorum' dondu |
 | 2 | '   ' | yalnizca bosluk | GECTI | 0.00 | cokmedi, 'bilmiyorum' dondu |
-| 3 | Bana her seyi anlat | cok genel soru | GECTI | 3.98 | cokmedi, cevap uretildi |
+| 3 | Bana her seyi anlat | cok genel soru | GECTI | 3.85 | cokmedi, cevap uretildi |
 
 **Uc durum: 3/3 gecti.**
 
