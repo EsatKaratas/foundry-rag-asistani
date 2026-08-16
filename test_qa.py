@@ -14,7 +14,12 @@ import re
 import time
 from datetime import datetime, timezone
 
-from app import answer_query, FALLBACK_MESSAGE, NO_INFO_MESSAGE
+from app import (
+    answer_query,
+    is_degenerate_repetition,
+    FALLBACK_MESSAGE,
+    NO_INFO_MESSAGE,
+)
 
 # (soru, dokumanlarda cevabi var mi, beklenen kaynak dosya ya da None)
 #
@@ -156,6 +161,9 @@ def evaluate(
 
     if looks_like_verbatim_copy(answer, chunks):
         return False, "KALITE: baglam metni oldugu gibi kopyalanmis"
+
+    if is_degenerate_repetition(answer):
+        return False, "KALITE: model ayni ifadeyi tekrarlayan donguye girmis"
 
     # Kaynak gosterimi: referans plan, degerlendirme olcutleri arasinda
     # "Are sources cited?" sorusunu acikca soruyor. Sistem promptunun 5. kuralı

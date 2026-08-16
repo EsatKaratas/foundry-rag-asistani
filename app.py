@@ -156,6 +156,27 @@ MAX_ANSWER_CHARS = 700
 ANSWER_UNIT_PATTERN = re.compile(r"(?<=[.!?])\s+|\n+")
 
 
+# Yinelenme tespiti. Kucuk modeller bazen ayni ifadeyi onlarca kez tekrarlayan
+# bir donguye giriyor (arayuzde gozlemlendi). Bu cikti anlamsizdir ve kirpilarak
+# duzeltilemez - kirpilmis hali de anlamsiz kalir.
+REPETITION_MIN_WORDS = 30
+REPETITION_MIN_UNIQUE_RATIO = 0.35
+
+
+def is_degenerate_repetition(answer: str) -> bool:
+    """Cevap, ayni ifadeyi tekrarlayan bir donguye mi girmis?
+
+    Olcut: benzersiz kelime orani. Saglikli bir cevapta kelimelerin buyuk
+    bolumu farklidir (olculen degerler 0.7 uzeri); donguye giren bir ciktida
+    ayni birkac kelime yuzlerce kez tekrarlandigi icin bu oran cok dusuk cikar.
+    Kisa cevaplar degerlendirilmez - dogal tekrar yaniltici olabilir.
+    """
+    words = " ".join(answer.split()).lower().split()
+    if len(words) < REPETITION_MIN_WORDS:
+        return False
+    return len(set(words)) / len(words) < REPETITION_MIN_UNIQUE_RATIO
+
+
 def limit_answer(answer: str) -> str:
     """Cevabi, sistem promptunun soz verdigi sinirlara kodla indirger.
 
@@ -181,7 +202,18 @@ def limit_answer(answer: str) -> str:
         kept.append(unit)
         length += len(unit) + 1
 
-    return " ".join(kept).strip()
+    limited = " ".join(kept).strip()
+
+    # Sert sinir: yukaridaki dongude ILK birim uzunlugu ne olursa olsun
+    # korunuyor, yani noktalama kullanmayan tek parca uzun bir cevap hic
+    # kirpilmadan geciyordu (arayuzde gozlemlendi). Burada kelime sinirindan
+    # kesiliyor.
+    if len(limited) > MAX_ANSWER_CHARS:
+        cut = limited[:MAX_ANSWER_CHARS]
+        space = cut.rfind(" ")
+        limited = (cut[:space] if space > 0 else cut).rstrip(" ,;") + "…"
+
+    return limited
 
 
 def ensure_source_citation(answer: str, chunks: list[dict]) -> str:
@@ -405,6 +437,13 @@ def answer_query(question: str, k: int = 3) -> tuple[str, list[dict]]:
     # bir kez daha deniyoruz ki dusunme adimi tamamlanip cevap uretilebilsin.
     if answer == FALLBACK_MESSAGE:
         answer = _generate_answer(client, system_prompt, question, max_tokens=1200)
+
+    # Yinelenme dongusu: kirpmak ise yaramaz, bir kez daha uretmeyi deniyoruz.
+    # Ikinci deneme de donguye girerse cevabi hic gostermiyoruz.
+    if is_degenerate_repetition(answer):
+        answer = _generate_answer(client, system_prompt, question, max_tokens=400)
+        if is_degenerate_repetition(answer):
+            return FALLBACK_MESSAGE, chunks
 
     # Son savunma: cevaptaki bilgi gercekten baglamda geciyor mu?
     if not is_answer_grounded(client, context, answer):
@@ -861,6 +900,21 @@ def main() -> None:
             slot = st.empty()
             with slot.container():
                 answer = st.write_stream(stream_generation(system_prompt, question))
+
+            # Yinelenme dongusu akis sirasinda durdurulamaz (metin zaten
+            # ekrana yazildi), ama akis bitince tespit edilip yerine saglikli
+            # bir cevap konabilir. Bir kez daha uretiyoruz; o da donguye
+            # girerse cevabi hic gostermiyoruz.
+            if is_degenerate_repetition(answer):
+                _log(trace, "Yinelenme kontrolü", False,
+                     "model aynı ifadeyi tekrarladı — cevap yeniden üretildi")
+                answer = _generate_answer(
+                    get_client(), system_prompt, question, max_tokens=400
+                )
+                if is_degenerate_repetition(answer):
+                    answer = FALLBACK_MESSAGE
+                slot.empty()
+                slot.markdown(answer)
 
             # Uretim sonrasi deterministik kontroller - hepsi ize yaziliyor.
             bad_numbers = ENABLE_GROUNDEDNESS_CHECK and has_ungrounded_numbers(

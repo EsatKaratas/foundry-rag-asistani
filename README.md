@@ -323,8 +323,22 @@ geçmeyen özel isimler**. Model paraphrase yaparken yeni özel isim uydurmaz; o
   koşudan koşuya değişiyordu). `limit_answer()` iki sınırı birlikte uyguluyor:
   en fazla 3 birim (cümle **ya da** madde satırı — model bazen noktalama
   kullanmayan listeler ürettiği için satır sonu da sınır sayılıyor) ve 700 karakter.
-  **Bilinen sınır:** tek bir birim tek başına 700 karakteri aşarsa kırpılmıyor
-  (cümle ortasından kesmek, bozuk cevaptan daha kötü bir çıktı üretirdi).
+  Karakter sınırı, tek bir birim tek başına sınırı aşsa bile uygulanıyor: kesim
+  kelime sınırından yapılıyor. Bu ikinci kural sonradan eklendi — ilk sürümde
+  "en az bir birim her zaman kalsın" kuralı, virgülle bağlanmış tek parça uzun
+  bir cevabı hiç kırpmadan geçiriyordu (arayüzde gözlemlendi).
+
+- **Yinelenme döngüsü tespiti:** Küçük modeller ara sıra aynı ifadeyi onlarca kez
+  tekrarlayan bir döngüye giriyor. Arayüzde gözlemlenen örnek: *"Çapraz ateş nedir?"*
+  sorusuna gelen cevap, aynı yan cümleyi ~20 kez tekrarlayan 1000+ karakterlik bir
+  metindi. Bu çıktı **kırpılarak düzeltilemez** — kırpılmış hâli de anlamsız kalır.
+
+  Ölçüt deterministik: **benzersiz kelime oranı**. Sağlıklı bir cevapta kelimelerin
+  büyük bölümü farklıdır (ölçülen değerler 0.7 üzeri); döngüye giren bir çıktıda
+  aynı birkaç kelime tekrarlandığı için bu oran çok düşer (eşik 0.35, 30 kelimenin
+  altındaki cevaplar değerlendirilmez). Döngü tespit edilirse cevap bir kez daha
+  üretiliyor; ikinci deneme de döngüye girerse kullanıcıya hiç gösterilmiyor.
+  Aynı kontrol test setine de eklendi, böylece bir daha olursa sessizce geçmez.
 
 - **Uç durumlar:** Boş sorgu, yalnızca boşluk içeren sorgu ve çok genel sorular
   `test_qa.py` içinde ayrı bir bölümde test ediliyor (3/3 geçti).
