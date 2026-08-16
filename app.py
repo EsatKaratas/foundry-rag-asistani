@@ -37,20 +37,61 @@ FALLBACK_MESSAGE = (
 
 NO_INFO_MESSAGE = "Bu bilgi elimdeki dokumanlarda yok."
 
-# Onemli notlar (veri seti buyuyup cesitlenince yeniden olculdu):
-# Ilk (2 dokumanlik, dar konulu) test setinde cevaplanabilir/cevaplanamaz sorular
-# arasinda net bir bosluk vardi (0.68-0.78 vs 0.31-0.46), o yuzden 0.55 esigi
-# hersey icin yeterliydi. Ama 5 dokumanlik, daha cesitli bu veri setinde bazi
-# gercekten cevaplanabilir sorular (ornegin kisa/soyut ifade edilenler) 0.44-0.50
-# araligina dusebiliyor - bu da bazi cevaplanamaz sorularla (ornegin 0.44) neredeyse
-# cakisiyor. Yani TEK bir esik, TEK basina %100 guvenilir bir ayrac degil; esik
-# veri setine ve soru ifadesine bagli.
+# Alaka karari UC BOLGELI bir mantikla veriliyor. Bunun sebebi olculen su iki
+# gercek: (1) tek basina bir kosinus esigi yeterli degil, cunku cevaplanabilir ve
+# cevaplanamaz sorularin skor dagilimlari kismen cakisiyor; (2) her karari LLM'e
+# birakmak da yeterli degil, cunku GPU cikarimi tam deterministik olmadigindan
+# ayni soru farkli kosularda farkli sonuclanabiliyor (test sirasinda gozlemlendi).
 #
-# Pragmatik cozum: esigi dusuk tutup (0.40) sadece ACIKCA alakasiz sorulari
-# (skoru cok dusuk olanlari) LLM'e hic sormadan eliyoruz. Sinirdaki/belirsiz
-# durumlar icin modelin kendi talimat takibi ikincil bir savunma katmani olarak
-# devrede kaliyor (bkz. SYSTEM_PROMPT_TEMPLATE).
-SIMILARITY_THRESHOLD = 0.40
+# Cozum: skorun net oldugu durumlarda KOD karar veriyor (deterministik ve hizli),
+# sadece belirsiz "gri bolge" LLM denetleyicisine gidiyor.
+#
+#   skor >= HIGH_CONFIDENCE  -> kesin alakali (LLM'e sorulmaz)
+#   skor <  SIMILARITY_THRESHOLD -> kesin alakasiz (LLM'e sorulmaz)
+#   arada                    -> alaka denetleyicisine (grader) sorulur
+#
+# Olculen degerler: cevaplanabilir sorularin en iyi parca skorlari 0.37-0.71,
+# cevaplanamaz sorularinki 0.26-0.40 araliginda.
+SIMILARITY_THRESHOLD = 0.30
+HIGH_CONFIDENCE_THRESHOLD = 0.50
+
+# Alaka denetleyicisi (relevance grader) promptu.
+# Neden gerekli: kucuk dil modelleri "baglamda cevap yoksa cevap verme" gibi acik
+# uclu bir talimati guvenilir sekilde uygulayamiyor (test edildi, halusinasyon
+# yapabiliyor). Ama AYNI model, "bu metin bu soruyu cevapliyor mu? EVET/HAYIR"
+# seklindeki IKILI SINIFLANDIRMA gorevinde belirgin sekilde daha basarili.
+# Bu yuzden getirilen her parca once ayri ayri denetleniyor, sadece alakali
+# bulunanlar cevap uretimine gonderiliyor. (Bu yaklasim literaturde "retrieval
+# grading" / CRAG deseni olarak biliniyor.)
+RELEVANCE_GRADER_PROMPT = """/no_think
+Gorevin: verilen BAGLAM metninin, KULLANICI SORUSUNU cevaplamak icin gerekli bilgiyi icerip icermedigine karar vermek.
+Sadece tek kelime yaz: EVET veya HAYIR. Baska hicbir sey yazma.
+EVET = baglamda sorunun cevabi var.
+HAYIR = baglamda sorunun cevabi yok.
+
+BAGLAM:
+{context}
+
+KULLANICI SORUSU: {question}"""
+
+
+def is_chunk_relevant(client, question: str, chunk_content: str) -> bool:
+    """Tek bir dokuman parcasinin soruyu cevaplamaya yetip yetmedigini denetler."""
+    response = client.chat.completions.create(
+        model=CHAT_MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": RELEVANCE_GRADER_PROMPT.format(
+                    context=chunk_content, question=question
+                ),
+            }
+        ],
+        temperature=0.0,
+        max_tokens=10,
+    )
+    verdict = (response.choices[0].message.content or "").upper()
+    return "EVET" in verdict
 
 
 def strip_reasoning(raw_answer: str) -> str:
@@ -79,6 +120,22 @@ Baglam:
 """
 
 
+def _generate_answer(client, system_prompt: str, question: str, max_tokens: int) -> str:
+    """Sohbet modelinden cevabi uretir ve ic dusunme adimini temizler."""
+    response = client.chat.completions.create(
+        model=CHAT_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            # "/no_think" hem sistem hem kullanici mesajina ekleniyor; tek yerde
+            # verildiginde model bunu bazen goz ardi edebiliyor.
+            {"role": "user", "content": f"{question} /no_think"},
+        ],
+        temperature=0.2,
+        max_tokens=max_tokens,
+    )
+    return strip_reasoning(response.choices[0].message.content)
+
+
 def build_context(chunks: list[dict]) -> str:
     parts = []
     for chunk in chunks:
@@ -93,31 +150,40 @@ def answer_query(question: str, k: int = 3) -> tuple[str, list[dict]]:
     """
     chunks = get_top_chunks(question, k=k)
 
-    # Deterministik kapi: en alakali parcanin skoru bile esigin altindaysa,
-    # dokumanlarda cevap olmadigi neredeyse kesin - modele sormaya gerek yok.
+    # 1. Kapi (ucuz): en iyi parca bile cok dusuk skorluysa, hicbir LLM cagrisi
+    # yapmadan eliyoruz.
     if not chunks or chunks[0]["score"] < SIMILARITY_THRESHOLD:
         return NO_INFO_MESSAGE, chunks
 
+    client = get_client()
+
+    # 2. Kapi (asil): her parcayi ayri ayri degerlendir.
+    # Skoru yeterince yuksek olanlari dogrudan kabul ediyoruz (LLM'e sormadan);
+    # sadece gri bolgedekiler icin alaka denetleyicisini calistiriyoruz.
+    relevant_chunks = []
+    for chunk in chunks:
+        if chunk["score"] >= HIGH_CONFIDENCE_THRESHOLD:
+            relevant_chunks.append(chunk)
+        elif is_chunk_relevant(client, question, chunk["content"]):
+            relevant_chunks.append(chunk)
+
+    if not relevant_chunks:
+        return NO_INFO_MESSAGE, chunks
+
+    chunks = relevant_chunks
     context = build_context(chunks)
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
 
-    client = get_client()
-    response = client.chat.completions.create(
-        model=CHAT_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": question},
-        ],
-        temperature=0.2,
-        # qwen3-4b bir "reasoning" modeli; sistem promptundaki "/no_think"
-        # yonergesiyle ic dusunme adimini kapatiyoruz (hem cevap suresini
-        # ~10 kata kadar kisaltiyor hem de dusunme donguleri riskini ortadan
-        # kaldiriyor - test sirasinda olculdu). max_tokens yine de bir
-        # guvenlik sinir olarak kaliyor.
-        max_tokens=400,
-    )
-    raw_answer = response.choices[0].message.content
-    answer = strip_reasoning(raw_answer)
+    answer = _generate_answer(client, system_prompt, question, max_tokens=400)
+
+    # Nadiren, "/no_think" yonergesine ragmen model yine de uzun bir ic dusunme
+    # adimina giriyor ve token butcesi dolmadan cevaba ulasamiyor (test sirasinda
+    # gozlemlendi: 3 kosudan 1'inde). Bu durumu strip_reasoning tespit edip
+    # FALLBACK_MESSAGE donuyor; boyle bir durumda daha genis token butcesiyle
+    # bir kez daha deniyoruz ki dusunme adimi tamamlanip cevap uretilebilsin.
+    if answer == FALLBACK_MESSAGE:
+        answer = _generate_answer(client, system_prompt, question, max_tokens=1200)
+
     return answer, chunks
 
 

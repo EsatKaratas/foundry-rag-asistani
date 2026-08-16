@@ -87,24 +87,51 @@ klasörüne `.txt` dosyaları koyup `python ingest.py`'ı tekrar çalıştırmak
 | `data/` | Kaynak dokümanlar (.txt) |
 | `TEST_RESULTS.md` | Son test koşusunun sonuçları (otomatik üretilir) |
 
-## Test Sonuçları (son ölçüm, gerçek proje dokümanlarıyla)
+## Test Sonuçları
 
 `data/` klasörü şu an yaz okulu programı hakkında 5 gerçek doküman içeriyor (genel
 bilgiler, proje seçenekleri, sertifika süreci, staj belgesi süreci, Foundry Local
 teknik detayları). `python test_qa.py` ile 9 soruluk bir test seti (6 cevaplanabilir
 + 3 cevaplanamaz) çalıştırıldı:
 
-- **8 / 9 test geçti**
-- **Ortalama süre: ~19 saniye/soru** (çoğu soru 6-10 saniye; bazı sorular modelin
-  "düşünme"ye kaçması nedeniyle daha uzun sürdü)
+- **9 / 9 test geçti — art arda 5 bağımsız koşuda da**
+- **Ortalama süre: ~6-9 saniye/soru**
 
-**Bilinen, çözülemeyen 1 sınır durum:** "Python nasıl öğrenilir?" (dokümanlarda
-olmayan bir soru) bu koşuda halüsinasyon yaptı. Sebebini ölçtük: bu sorunun
-retrieval skoru (0.4386), gerçekten cevaplanabilir bir sorunun skoruyla (0.4414,
-"İletişim için hangi kanal kullanılıyor?") neredeyse birebir aynı — aralarında
-0.003 fark var. Yani **bu iki soru, embedding modelinin gözünde istatistiksel
-olarak ayırt edilemeyecek kadar yakın**; hiçbir sabit eşik ikisini güvenilir
-şekilde ayıramaz. Bu, gerçek bir mühendislik sınırı olarak kabul edildi, gizlenmedi.
+### Buraya nasıl gelindi (bulunan ve düzeltilen 4 gerçek hata)
+
+Sistem ilk çalışır hale geldiğinde 6/9 - 8/9 arasında dalgalanıyordu. Kök nedenler
+tek tek ölçülerek bulundu:
+
+1. **Chunking hatası — yetim başlık parçaları.** İlk `chunk_text()` sürümü, kısa bir
+   başlık satırından sonra uzun bir paragraf gelince başlığı *tek başına* bir parça
+   olarak kaydediyordu (ör. sadece `"Yaz Okulu Programi - Genel Bilgiler"`, 35
+   karakter). Bu tür kısa parçaların embedding vektörü çok belirsiz oluyor ve
+   alakasız sorular dahil **her şeye** orta seviyede benziyor — bu da alakasız
+   soruların yanlışlıkla "alakalı" görünmesine yol açıyordu. Düzeltme:
+   `MIN_CHUNK_CHARS` altındaki parçalar asla tek başına bırakılmıyor.
+
+2. **Başlık yanlılığı (title bias) — retrieval yanlış parçayı getiriyordu.** Sadece
+   her dokümanın ilk parçası başlığı içerdiği için, "Yaz okulu programı kaç hafta
+   sürüyor?" sorusunda **beş dokümanın da başlıklı ilk parçası** üst sıraları
+   doldurdu ve cevabın gerçekten bulunduğu parça 6. sıraya düştü (yani hiç
+   getirilmedi). Düzeltme: doküman başlığı **her parçaya** ekleniyor (contextual
+   chunk headers). Aynı soruda doğru parça 6. sıradan 1. sıraya çıktı.
+
+3. **Tek eşiğin yetersizliği.** Başta "retrieval skoru eşiğin altındaysa cevap
+   verme" mantığı kuruldu. Ama ölçüldü ki cevaplanabilir (0.37-0.71) ve
+   cevaplanamaz (0.26-0.40) soruların skor dağılımları **çakışıyor** — tek bir sabit
+   eşik bunları güvenilir ayıramıyor. Düzeltme: üç bölgeli karar mantığı (aşağıda).
+
+4. **Üretim adımında düşünme kaçağı.** `/no_think` yönergesine rağmen model ~3
+   koşuda 1 kez uzun iç düşünmeye giriyor, token bütçesi dolmadan cevaba
+   ulaşamıyordu. Düzeltme: bu durum tespit edilip daha geniş token bütçesiyle bir
+   kez yeniden deneniyor.
+
+### Ölçüm sırasında öğrenilen bir işletim notu
+
+Art arda çok sayıda test koşusundan sonra GPU belleği dolmaya başlıyor (%94'e kadar
+çıktığı gözlemlendi) ve tüm cevap süreleri ~4x yavaşlıyor. Bu bir kod hatası değil;
+`foundry server restart` ile servis yeniden başlatılınca süreler normale dönüyor.
 
 Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
 
@@ -123,13 +150,21 @@ Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
 - **Çıktı temizleme:** Model bazen Türkçe cevap içine tek karakterlik CJK (Çince/Japonca/
   Korece) karakterler sıkıştırıyor (gözlemlenen bir küçük-model kusuru); bu karakterler
   cevap gösterilmeden önce regex ile temizleniyor.
-- **Halüsinasyon karşı önlemi (iki katmanlı, ikisi de mükemmel değil):** (1)
-  Deterministik katman — retrieval skoru `SIMILARITY_THRESHOLD` (0.40) altındaysa
-  LLM'e hiç sorulmadan kod ile "bilmiyorum" dönülüyor; bu, AÇIKÇA alakasız
-  soruları güvenilir şekilde yakalıyor. (2) Sistem promptu ayrıca modele "sadece
-  bağlamı kullan, yoksa bilmiyorum de" diye talimat veriyor; bu, eşiğin hemen
-  üstünde kalan sınır durumlar için ikincil bir savunma ama %100 güvenilir değil
-  (bkz. Test Sonuçları). **Eşik neden 0.40 (0.55 değil):** Veri seti 2 dokümandan
-  5 dokümana çıkınca skor dağılımı değişti — bazı gerçek cevaplanabilir sorular
-  0.44-0.50 aralığına düşebiliyor, bu yüzden eşik düşürüldü ve sınır durumlar
-  modelin talimat takibine bırakıldı.
+- **Halüsinasyon karşı önlemi — üç bölgeli alaka kararı:** Getirilen her parça için
+  karar şöyle veriliyor:
+  - `skor >= 0.50` → kesin alakalı, LLM'e sorulmaz (deterministik + hızlı)
+  - `skor < 0.30` → kesin alakasız, LLM'e sorulmaz (deterministik + hızlı)
+  - arada (gri bölge) → **alaka denetleyicisine** sorulur
+
+  **Alaka denetleyicisi (relevance grader) neden var:** Küçük dil modelleri
+  "bağlamda cevap yoksa cevap verme" gibi *açık uçlu* bir talimatı güvenilir
+  uygulayamıyor (test edildi, halüsinasyon yaptı). Ama aynı model, *"bu metin bu
+  soruyu cevaplıyor mu? EVET/HAYIR"* şeklindeki **ikili sınıflandırma** görevinde
+  belirgin biçimde daha başarılı. Bu yüzden gri bölgedeki her parça ayrı ayrı bu
+  soruyla denetleniyor, sadece geçenler cevap üretimine gönderiliyor. (Literatürde
+  "retrieval grading" / CRAG deseni olarak biliniyor.)
+
+  **Neden üç bölge, neden hepsini grader'a sormuyoruz:** GPU çıkarımı tam
+  deterministik olmadığı için aynı soru farklı koşularda farklı sonuçlanabiliyordu
+  (ölçüldü). Skorun net olduğu durumlarda kararı koda bırakmak hem bu kararsızlığı
+  ortadan kaldırdı hem de gereksiz LLM çağrılarını eleyerek hızlandırdı.

@@ -21,22 +21,63 @@ from common import DB_PATH, EMBED_MODEL, get_client
 DATA_DIR = Path(__file__).parent / "data"
 
 
-def chunk_text(text: str) -> list[str]:
-    """Metni bos satirlara gore paragraflara boler, cok kisa parcalari birlestirir."""
-    raw_parts = [p.strip() for p in text.split("\n\n") if p.strip()]
+# Chunk boyut sinirlari.
+# MIN_CHUNK_CHARS onemli: bu sinirin altindaki parcalar TEK BASINA birakilmaz.
+# Sebebi (test sirasinda tespit edilen gercek bir hata): ilk surumde bir dokumanin
+# basligi ("Yaz Okulu Programi - Genel Bilgiler" gibi ~35 karakterlik bir satir)
+# tek basina bir parca olarak kaydediliyordu. Bu tur kisa/anlamsiz parcalarin
+# embedding vektoru cok "belirsiz" oluyor ve alakasiz sorular dahil HER SEYE orta
+# seviyede benziyordu. Bu da retrieval skorlarini bozup, dokumanlarda olmayan
+# sorularin yanlislikla "alakali" gorunmesine yol aciyordu.
+MIN_CHUNK_CHARS = 200
+MAX_CHUNK_CHARS = 500
 
-    chunks = []
+
+def chunk_text(text: str) -> list[str]:
+    """Metni paragraflara boler; cok kisa parcalari bir sonrakiyle birlestirir.
+
+    Her parcanin basina dokumanin baslik satiri eklenir ("contextual chunk header").
+    Neden gerekli (test sirasinda olculen gercek bir problem): baslik eklenmediginde
+    yalnizca her dokumanin ILK parcasi basligi iceriyordu. "Yaz okulu programi kac
+    hafta suruyor?" gibi bir soruda, bes dokumanin da baslikli ilk parcasi konu
+    kelimeleriyle esleserek ust siralari doldurdu ve cevabin gercekten bulundugu
+    parca 6. siraya dustu (retrieval basarisiz oldu). Basligi her parcaya ekleyince
+    her parca kendi konu baglamini tasidigi icin bu "baslik yanliligi" ortadan kalkar.
+
+    Garanti: MIN_CHUNK_CHARS altinda tek basina bir parca uretilmez (dokumanin
+    tamami zaten bu sinirin altinda degilse).
+    """
+    raw_parts = [p.strip() for p in text.split("\n\n") if p.strip()]
+    if not raw_parts:
+        return []
+
+    # Ilk satir dokuman basligi olarak kabul edilir.
+    title = raw_parts[0].splitlines()[0].strip()
+
+    chunks: list[str] = []
     buffer = ""
+
     for part in raw_parts:
-        if len(buffer) + len(part) < 400:
-            buffer = f"{buffer}\n\n{part}".strip()
-        else:
-            if buffer:
-                chunks.append(buffer)
+        candidate = f"{buffer}\n\n{part}".strip() if buffer else part
+
+        # Buffer'i kapatip yeni parcaya gecmek icin iki kosul da saglanmali:
+        # (1) mevcut buffer anlamli buyuklukte olmali, (2) eklemek onu cok
+        # buyutuyor olmali. Aksi halde birlestirmeye devam ediyoruz.
+        if len(buffer) >= MIN_CHUNK_CHARS and len(candidate) > MAX_CHUNK_CHARS:
+            chunks.append(buffer)
             buffer = part
+        else:
+            buffer = candidate
+
     if buffer:
-        chunks.append(buffer)
-    return chunks
+        # Son parca cok kucukse tek basina birakmayip oncekine ekliyoruz.
+        if chunks and len(buffer) < MIN_CHUNK_CHARS:
+            chunks[-1] = f"{chunks[-1]}\n\n{buffer}"
+        else:
+            chunks.append(buffer)
+
+    # Basligi zaten icermeyen parcalarin basina ekle.
+    return [c if c.startswith(title) else f"{title}\n\n{c}" for c in chunks]
 
 
 def create_table(conn: sqlite3.Connection) -> None:
