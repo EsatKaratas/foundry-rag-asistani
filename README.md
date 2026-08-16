@@ -127,6 +127,21 @@ tek tek ölçülerek bulundu:
    ulaşamıyordu. Düzeltme: bu durum tespit edilip daha geniş token bütçesiyle bir
    kez yeniden deneniyor.
 
+5. **Bağlamı kopyalama (testlerin kaçırdığı hata).** Arayüzde manuel deneme
+   sırasında görüldü: model soruyu cevaplamak yerine bağlam metnini kelimesi
+   kelimesine, üç kez tekrarlayarak yazıyor ve token bütçesi dolana kadar devam
+   ediyordu (cevap hem yanlış hem ~100 saniye sürüyordu). Sebep: sistem promptu
+   *"hangi kaynak dosyadan yararlandığını belirt"* diyordu ve bağlam
+   `[Kaynak: dosya]` blokları halinde veriliyordu — model bunu "blokları olduğu
+   gibi yaz" diye yorumluyordu. Düzeltme: açık uzunluk sınırı (en fazla 3 cümle),
+   açık "kopyalama" yasağı, kaynak gösterimi için dar tek satırlık format.
+
+   **Bu hata testlerin 9/9 verdiği bir dönemde vardı** — çünkü test yalnızca
+   "cevap üretildi mi yoksa 'bilmiyorum' mu dedi" diye bakıyordu, cevabın
+   *içeriğine* bakmıyordu. Bu yüzden `test_qa.py`'ye iki kalite kontrolü eklendi:
+   (a) cevap uzunluk sınırı, (b) cevabın bağlamdan uzun bir bölümü aynen
+   kopyalayıp kopyalamadığının tespiti.
+
 ### Ölçüm sırasında öğrenilen bir işletim notu
 
 Art arda çok sayıda test koşusundan sonra GPU belleği dolmaya başlıyor (%94'e kadar

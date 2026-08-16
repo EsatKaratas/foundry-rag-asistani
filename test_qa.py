@@ -30,17 +30,55 @@ TEST_CASES = [
 ]
 
 
-def evaluate(question: str, expect_answerable: bool, answer: str) -> tuple[bool, str]:
+# Kalite kontrolu sinirlari.
+# Bu kontroller sonradan eklendi: ilk surumde test yalnizca "cevap uretildi mi
+# yoksa 'bilmiyorum' mu dedi" diye bakiyordu. Bu yuzden testler 9/9 gecerken,
+# arayuzde model baglam metnini kelimesi kelimesine kopyalayip tekrarliyordu ve
+# test bunu hata olarak gormuyordu. Cevabin ICERIGINI de denetlemek gerekiyor.
+MAX_ANSWER_CHARS = 900
+VERBATIM_COPY_WINDOW = 120
+
+
+def looks_like_verbatim_copy(answer: str, chunks: list[dict]) -> bool:
+    """Cevabin, baglamdan uzun bir bolumu oldugu gibi kopyalayip kopyalamadigini kontrol eder.
+
+    Yontem: cevabin icinde VERBATIM_COPY_WINDOW karakterlik herhangi bir pencere,
+    getirilen parcalarin metninde aynen geciyorsa bu bir kopyalama sayilir.
+    """
+    normalized_answer = " ".join(answer.split())
+    if len(normalized_answer) < VERBATIM_COPY_WINDOW:
+        return False
+
+    normalized_context = " ".join(" ".join(c["content"] for c in chunks).split())
+
+    for start in range(0, len(normalized_answer) - VERBATIM_COPY_WINDOW + 1, 20):
+        window = normalized_answer[start : start + VERBATIM_COPY_WINDOW]
+        if window in normalized_context:
+            return True
+    return False
+
+
+def evaluate(
+    question: str, expect_answerable: bool, answer: str, chunks: list[dict]
+) -> tuple[bool, str]:
     is_fallback = answer.strip() in (NO_INFO_MESSAGE, FALLBACK_MESSAGE)
 
-    if expect_answerable:
-        passed = not is_fallback and len(answer.strip()) > 0
-        note = "cevap uretildi" if passed else "BEKLENMEDIK: cevap veremedi / bos dondu"
-    else:
+    if not expect_answerable:
         passed = is_fallback
         note = "dogru sekilde 'bilmiyorum' dedi" if passed else "BEKLENMEDIK: uydurma cevap verdi"
+        return passed, note
 
-    return passed, note
+    # Cevaplanabilir sorular icin: once cevap uretilmis mi, sonra KALITESI nasil.
+    if is_fallback or not answer.strip():
+        return False, "BEKLENMEDIK: cevap veremedi / bos dondu"
+
+    if len(answer) > MAX_ANSWER_CHARS:
+        return False, f"KALITE: cevap cok uzun ({len(answer)} karakter)"
+
+    if looks_like_verbatim_copy(answer, chunks):
+        return False, "KALITE: baglam metni oldugu gibi kopyalanmis"
+
+    return True, "cevap uretildi"
 
 
 def main() -> None:
@@ -59,7 +97,7 @@ def main() -> None:
         elapsed = time.perf_counter() - start
         total_time += elapsed
 
-        passed, note = evaluate(question, expect_answerable, answer)
+        passed, note = evaluate(question, expect_answerable, answer, chunks)
         total_passed += int(passed)
 
         expected_label = "cevaplanabilir" if expect_answerable else "cevaplanamaz"

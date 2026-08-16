@@ -106,16 +106,26 @@ def strip_reasoning(raw_answer: str) -> str:
     cleaned = CJK_PATTERN.sub("", without_think).strip()
     return cleaned if cleaned else FALLBACK_MESSAGE
 
+# NOT (test sirasinda bulunan gercek bir hata): Bu promptun ilk surumu modele
+# "hangi kaynak dosyadan yararlandigini belirt" diyordu ve baglam da
+# "[Kaynak: dosya]" bloklariyla veriliyordu. Model bunu "bloklari oldugu gibi
+# yaz" seklinde yorumlayip baglam metnini kelimesi kelimesine, tekrar tekrar
+# kopyaliyor ve token butcesi dolana kadar devam ediyordu (cevap hem yanlis
+# hem cok yavas oluyordu). Duzeltme: acik uzunluk siniri + "kopyalama" yasagi
+# + kaynak gosterimi icin dar, tek satirlik bir format.
 SYSTEM_PROMPT_TEMPLATE = """/no_think
-Sen, verilen baglam disina cikmayan bir soru-cevap asistanisin.
+Asagidaki BAGLAM bilgisini kullanarak kullanicinin sorusunu cevapla.
 
 Kurallar:
-- SADECE asagida verilen baglami kullanarak cevap ver.
-- KESIN KURAL: Eger sorunun cevabi baglamda YOKSA, baska hicbir sey yazmadan ve
-  soruyu tekrar etmeden, SADECE su cumleyi yaz: "Bu bilgi elimdeki dokumanlarda yok."
-- Cevap baglamda varsa, hangi kaynak dosya(lar)dan yararlandigini belirt.
+1. Cevabin EN FAZLA 3 cumle olsun. Kisa ve net yaz.
+2. BAGLAM metnini oldugu gibi kopyalama, tekrar etme veya yapistirmaya calisma.
+   Sadece sorunun cevabini kendi cumlelerinle yaz.
+3. Sorunun cevabi BAGLAM'da yoksa, baska hicbir sey yazmadan sadece su cumleyi yaz:
+   "Bu bilgi elimdeki dokumanlarda yok."
+4. Cevabin en sonuna, yeni bir satirda, kullandigin kaynagi tek satirda ekle.
+   Ornek bicim: (Kaynak: ornek_dosya.txt)
 
-Baglam:
+BAGLAM:
 {context}
 """
 
@@ -137,10 +147,15 @@ def _generate_answer(client, system_prompt: str, question: str, max_tokens: int)
 
 
 def build_context(chunks: list[dict]) -> str:
+    """Getirilen parcalari tek bir baglam metnine cevirir.
+
+    Kaynak adi, modelin kopyalamaya tesvik olmamasi icin blok basligi yerine
+    sade bir satir olarak veriliyor (bkz. SYSTEM_PROMPT_TEMPLATE'teki not).
+    """
     parts = []
     for chunk in chunks:
-        parts.append(f"[Kaynak: {chunk['source']}]\n{chunk['content']}")
-    return "\n\n---\n\n".join(parts)
+        parts.append(f"Kaynak dosya: {chunk['source']}\n{chunk['content']}")
+    return "\n\n".join(parts)
 
 
 def answer_query(question: str, k: int = 3) -> tuple[str, list[dict]]:
