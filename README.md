@@ -89,6 +89,7 @@ klasörüne `.txt` dosyaları koyup `python ingest.py`'ı tekrar çalıştırmak
 | `common.py` | Foundry Local servisine bağlanma (dinamik port keşfi), model isimleri |
 | `ingest.py` | Dokümanları parçalayıp (chunk) vektörleştirip SQLite'a yazar |
 | `retrieval.py` | Soruyu vektörleştirip kosinüs benzerliğiyle en alakalı parçaları bulur |
+| `lexical_gate.py` | Sözcüksel alaka kapısı — konu kaymasını deterministik olarak yakalar |
 | `app.py` | Streamlit arayüzü + LLM entegrasyonu (RAG'ın "generate" adımı) |
 | `test_qa.py` | Fonksiyonel test seti — cevaplanabilir/cevaplanamaz sorularla doğrulama |
 | `data/` | Kaynak dokümanlar (.txt) |
@@ -132,10 +133,11 @@ tarihler, isimler) kodla kontrol edilmelidir.
 9 soruluk bir ana test seti (6 cevaplanabilir + 3 cevaplanamaz) ve ayrıca 3 uç
 durum vakası çalıştırıldı:
 
-- **8 / 9 ana test geçti**
+- **9 / 9 ana test geçti** — 3 ardışık koşuda kararlı
 - **3 / 3 uç durum testi geçti** (boş sorgu, yalnızca boşluk, çok genel soru)
-- **Ortalama süre: 1.83 saniye/soru** — referans dokümanın hedeflediği 1-3 saniye
-  aralığının içinde.
+- **Ortalama süre: 1.36 - 1.52 saniye/soru** — referans dokümanın hedeflediği
+  1-3 saniye aralığının içinde. Cevaplanamaz sorular **0.06 saniyede** reddediliyor,
+  çünkü sözcüksel kapı hiçbir LLM çağrısı yapmadan karar veriyor.
 
 **Uç durumlar neden ayrı bölümde:** bu girdiler için "doğru cevap" tek bir şey
 değil; referans plan yalnızca sistemin bunları sağlıklı karşılamasını istiyor,
@@ -144,13 +146,17 @@ belirli bir cevap şart koşmuyor. Ölçüt: **çökmedi + makul cevap döndü**
 soru 0.30-0.75 gri bölgesine düşüp alaka denetleyicisine gider ve GPU çıkarımı tam
 deterministik olmadığı için sonuç koşudan koşuya değişebilirdi.
 
-**Bilinen 1 sınır durum:** "Valorant turnuvalarında ödül havuzu ne kadar?" sorusuna
-sistem "bilmiyorum" demek yerine oyun içi ekonomi sistemini anlatıyor. Önemli nokta:
-bu bir **halüsinasyon değil** — verdiği bilgi doğru ve dokümanlarda gerçekten var.
-Sorun, modelin sorulan soruyu değil semantik olarak yakın başka bir soruyu
-cevaplaması ("turnuva ödülü" ile "oyun içi para" arasındaki anlamsal yakınlık).
-Uydurma bilgi vermediği için, yanlış bilgi üretmekten çok daha zararsız bir hata
-türü olarak kabul edildi ve gizlenmedi.
+**Uzun süre çözülemeyen sınır durum ve nasıl çözüldüğü:** "Valorant turnuvalarında
+ödül havuzu ne kadar?" sorusuna sistem uzunca bir süre "bilmiyorum" demek yerine
+oyun içi ekonomi sistemini anlatıyordu. Bu bir **halüsinasyon değildi** — verilen
+bilgi doğruydu ve dokümanlarda gerçekten vardı. Sorun, sorulan sorunun değil
+semantik olarak yakın başka bir sorunun cevaplanmasıydı (**konu kayması**).
+
+Bu hata ne eşik ayarıyla ne de alaka denetleyicisiyle çözülebiliyordu, çünkü ikisi
+de aynı şeye bakıyor: anlamsal yakınlık. Çözüm bu yüzden farklı bir sinyalden geldi
+— aşağıdaki **sözcüksel kapı** bölümüne bakın. Ölçüm: "turnuva" ve "ödül"
+kelimeleri korpusta **hiç geçmiyor**, dolayısıyla getirilen metin bu soruyu
+cevaplıyor olamaz. Bu kapı eklendikten sonra test 9/9'a çıktı.
 
 Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
 
@@ -181,8 +187,36 @@ Güncel sonuçlar için `TEST_RESULTS.md` dosyasına bakın.
 - **Çıktı temizleme:** Model bazen Türkçe cevap içine tek karakterlik CJK (Çince/Japonca/
   Korece) karakterler sıkıştırıyor (gözlemlenen bir küçük-model kusuru); bu karakterler
   cevap gösterilmeden önce regex ile temizleniyor.
-- **Halüsinasyon karşı önlemi — üç bölgeli alaka kararı:** Getirilen her parça için
-  karar şöyle veriliyor:
+- **Sözcüksel kapı (hibrit arama) — konu kaymasının deterministik çözümü:**
+  Kosinüs benzerliği anlamsal yakınlık ölçer. Tek konulu bir korpusta bu, *"bu parça
+  soruyu cevaplıyor mu"*yu değil *"bu metin aynı konu hakkında mı"*yı ölçmeye başlar.
+  Eşik ayarı bu sorunu çözmez, çünkü eşik de aynı sinyale bakar.
+
+  Çözüm, **farklı bir sinyal** eklemekten geldi: sorunun ayırt edici kelimelerinden
+  en az biri getirilen metinde geçmiyorsa, o metin bu soruyu cevaplıyor olamaz.
+  Ölçülen örnek: `turnuva` ve `ödül` kelimeleri korpusta **hiç geçmiyor** — yani
+  sistemin bu soruyu cevaplayabilmesi mümkün değil, ne kadar "yakın" görünürse
+  görünsün. (Literatürde **hibrit arama**: yoğun/embedding + seyrek/sözcüksel.)
+
+  *"Ayırt edici"* tanımı kritik: `valorant` kelimesi her dokümanda geçtiği için
+  hiçbir şey ayırt etmiyor, bu yüzden doküman frekansı yüksek kelimeler eleniyor
+  (klasik **IDF** fikrinin sade bir uygulaması). Türkçe için iki uyarlama gerekti:
+  (1) dokümanlar Türkçe karaktersiz yazılmış ama kullanıcı arayüze `görevi` diye
+  yazıyor → iki taraf da normalize ediliyor; (2) Türkçe sondan eklemeli
+  (`turnuva` → `turnuvalarında`) → tam kelime yerine ilk 5 karakterlik kaba gövde
+  karşılaştırılıyor.
+
+  Kapı **tolerelı** tasarlandı: tek eşleşme yeterli. Amaç geçerli soruları elemek
+  değil, hiçbir sözcüksel dayanağı olmayanları yakalamak. Sorunun hiç ayırt edici
+  kelimesi yoksa ("Bana her şeyi anlat") kapı karar veremez ve geçirir.
+  Entegrasyondan önce 6 cevaplanabilir + 3 cevaplanamaz soruya karşı ayrı ayrı
+  ölçüldü: **0 yanlış eleme**, 3 cevaplanamaz sorunun 3'ü de elendi.
+
+  İki kazanç: test 8/9 → **9/9**, ve kapı LLM çağrısından önce çalıştığı için
+  cevaplanamaz sorular **2.1 saniye yerine 0.06 saniyede** reddediliyor.
+
+- **Halüsinasyon karşı önlemi — üç bölgeli alaka kararı:** Sözcüksel kapıyı geçen
+  parçalar için karar şöyle veriliyor:
   - `skor >= 0.75` → kesin alakalı, LLM'e sorulmaz (deterministik + hızlı)
   - `skor < 0.30` → kesin alakasız, LLM'e sorulmaz (deterministik + hızlı)
   - arada (gri bölge) → **alaka denetleyicisine** sorulur

@@ -16,6 +16,7 @@ import sqlite3
 import streamlit as st
 
 from common import CHAT_MODEL, DB_PATH, EMBED_MODEL, get_client
+from lexical_gate import has_lexical_support
 from retrieval import get_top_chunks
 
 # qwen3-4b bir "reasoning" modelidir: cevaptan once <think>...</think> icinde
@@ -244,9 +245,21 @@ def retrieve_and_gate(question: str, k: int = 3):
     if not chunks or chunks[0]["score"] < SIMILARITY_THRESHOLD:
         return None, chunks, NO_INFO_MESSAGE, ""
 
+    # 2. Kapi (sozcuksel): kosinus benzerliginin yapisal olarak goremedigi
+    # hatayi yakalar. Sorunun ayirt edici kelimelerinden hicbiri getirilen
+    # metinde gecmiyorsa, o metin bu soruyu cevapliyor olamaz.
+    # Olculen ornek: "Valorant turnuvalarinda odul havuzu ne kadar?" - "turnuva"
+    # ve "odul" korpusta hic gecmiyor, ama embedding bunu oyun ici ekonomiye
+    # yakin buluyordu ve sistem yanlis soruyu cevapliyordu (konu kaymasi).
+    # Deterministik ve LLM cagrisindan ONCE calisiyor: hem daha guvenilir hem
+    # daha hizli. Ayrinti: lexical_gate.py
+    retrieved_text = "\n".join(chunk["content"] for chunk in chunks)
+    if not has_lexical_support(question, retrieved_text):
+        return None, chunks, NO_INFO_MESSAGE, ""
+
     client = get_client()
 
-    # 2. Kapi (asil): her parcayi ayri ayri degerlendir.
+    # 3. Kapi (anlamsal): her parcayi ayri ayri degerlendir.
     # Skoru yeterince yuksek olanlari dogrudan kabul ediyoruz (LLM'e sormadan);
     # sadece gri bolgedekiler icin alaka denetleyicisini calistiriyoruz.
     relevant_chunks = []

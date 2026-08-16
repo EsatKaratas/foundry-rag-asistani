@@ -1,19 +1,19 @@
-# Test Sonuclari — 2026-08-16T14:00:52.016353+00:00
+# Test Sonuclari — 2026-08-16T14:09:50.074892+00:00
 
 | # | Soru | Beklenen | Sonuc | Sure (sn) | Not |
 |---|------|----------|-------|-----------|-----|
-| 1 | Valorant kac kisiyle oynanir? | cevaplanabilir | GECTI | 2.25 | cevap uretildi + kaynak gosterildi |
-| 2 | Duelist rolunun gorevi nedir? | cevaplanabilir | GECTI | 1.90 | cevap uretildi + kaynak gosterildi |
-| 3 | Eco turu ne demek? | cevaplanabilir | GECTI | 1.79 | cevap uretildi + kaynak gosterildi |
-| 4 | Keskin nisanci tufeklerinin dezavantaji nedir? | cevaplanabilir | GECTI | 1.75 | cevap uretildi + kaynak gosterildi |
-| 5 | Orta bolgeyi kontrol etmek neden onemli? | cevaplanabilir | GECTI | 1.86 | cevap uretildi + kaynak gosterildi |
-| 6 | Yeni baslayan biri ajan secerken neye dikkat etmeli? | cevaplanabilir | GECTI | 2.41 | cevap uretildi + kaynak gosterildi |
-| 7 | Valorant hangi tarihte cikti? | cevaplanamaz | GECTI | 1.53 | dogru sekilde 'bilmiyorum' dedi |
-| 8 | Valorant turnuvalarinda odul havuzu ne kadar? | cevaplanamaz | KALDI | 2.08 | BEKLENMEDIK: uydurma cevap verdi |
-| 9 | Bugun hava nasil? | cevaplanamaz | GECTI | 0.92 | dogru sekilde 'bilmiyorum' dedi |
+| 1 | Valorant kac kisiyle oynanir? | cevaplanabilir | GECTI | 2.17 | cevap uretildi + kaynak gosterildi |
+| 2 | Duelist rolunun gorevi nedir? | cevaplanabilir | GECTI | 2.06 | cevap uretildi + kaynak gosterildi |
+| 3 | Eco turu ne demek? | cevaplanabilir | GECTI | 1.89 | cevap uretildi + kaynak gosterildi |
+| 4 | Keskin nisanci tufeklerinin dezavantaji nedir? | cevaplanabilir | GECTI | 1.83 | cevap uretildi + kaynak gosterildi |
+| 5 | Orta bolgeyi kontrol etmek neden onemli? | cevaplanabilir | GECTI | 2.00 | cevap uretildi + kaynak gosterildi |
+| 6 | Yeni baslayan biri ajan secerken neye dikkat etmeli? | cevaplanabilir | GECTI | 2.07 | cevap uretildi + kaynak gosterildi |
+| 7 | Valorant hangi tarihte cikti? | cevaplanamaz | GECTI | 0.06 | dogru sekilde 'bilmiyorum' dedi |
+| 8 | Valorant turnuvalarinda odul havuzu ne kadar? | cevaplanamaz | GECTI | 0.06 | dogru sekilde 'bilmiyorum' dedi |
+| 9 | Bugun hava nasil? | cevaplanamaz | GECTI | 0.06 | dogru sekilde 'bilmiyorum' dedi |
 
-**Toplam: 8/9 test gecti.**
-**Ortalama sure: 1.83 saniye/soru.**
+**Toplam: 9/9 test gecti.**
+**Ortalama sure: 1.36 saniye/soru.**
 
 ## Uc Durum Testleri
 
@@ -23,7 +23,7 @@ Referans planin Hafta 5 maddesi: *"It handles edge cases (like empty query input
 |---|-------|-----|-------|-----------|-----|
 | 1 | '' | bos sorgu | GECTI | 0.00 | cokmedi, 'bilmiyorum' dondu |
 | 2 | '   ' | yalnizca bosluk | GECTI | 0.00 | cokmedi, 'bilmiyorum' dondu |
-| 3 | Bana her seyi anlat | cok genel soru | GECTI | 4.64 | cokmedi, cevap uretildi |
+| 3 | Bana her seyi anlat | cok genel soru | GECTI | 2.38 | cokmedi, cevap uretildi |
 
 **Uc durum: 3/3 gecti.**
 
