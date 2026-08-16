@@ -1,0 +1,12 @@
+# Valorant'in gorsel kimligine yakin bir renk paleti.
+# Bu dosya Streamlit tarafindan otomatik okunur; uygulamada ayrica CSS ile
+# ince ayar yapiliyor (bkz. app.py icindeki CUSTOM_CSS).
+[theme]
+base = "dark"
+primaryColor = "#FF4655"           # Valorant kirmizisi (vurgu rengi)
+backgroundColor = "#0F1923"        # koyu lacivert-siyah ana zemin
+secondaryBackgroundColor = "#1F2731"  # kenar cubugu / kartlar
+textColor = "#ECE8E1"              # kirik beyaz metin
+
+[server]
+headless = true

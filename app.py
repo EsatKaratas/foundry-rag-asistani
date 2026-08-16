@@ -377,6 +377,82 @@ SAMPLE_QUESTIONS = [
     "Tepme kontrolü nedir?",
 ]
 
+USER_AVATAR = "🎮"
+BOT_AVATAR = "🎯"
+
+# Valorant'in gorsel kimligine yakin bir gorunum icin ozel CSS.
+# Temel renkler .streamlit/config.toml'da tanimli; burasi sadece bicimsel
+# ince ayar (koseli kenarlar, kirmizi vurgu cizgileri, buyuk harf basliklar).
+VALORANT_RED = "#FF4655"
+VALORANT_TEAL = "#0FB6A8"
+
+CUSTOM_CSS = f"""
+<style>
+/* Baslik: Valorant'in koseli, buyuk harfli, sikistirilmis tipografisine yakin */
+h1 {{
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    font-weight: 800 !important;
+    border-left: 6px solid {VALORANT_RED};
+    padding-left: 16px;
+    margin-bottom: 4px !important;
+}}
+
+/* Sohbet balonlari: sol kenarda ince vurgu cizgisi, koseli kutular */
+[data-testid="stChatMessage"] {{
+    background-color: rgba(31, 39, 49, 0.55);
+    border-left: 3px solid {VALORANT_RED};
+    border-radius: 2px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+}}
+
+/* Dugmeler: koseli, kirmizi cerceveli, buyuk harf */
+.stButton > button {{
+    border-radius: 2px;
+    border: 1px solid rgba(255, 70, 85, 0.45);
+    background-color: rgba(255, 70, 85, 0.06);
+    color: #ECE8E1;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    transition: all 0.15s ease-in-out;
+}}
+.stButton > button:hover {{
+    border-color: {VALORANT_RED};
+    background-color: rgba(255, 70, 85, 0.18);
+    transform: translateX(2px);
+}}
+
+/* Kenar cubugu basliklari */
+[data-testid="stSidebar"] h3 {{
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-size: 0.85rem !important;
+    color: {VALORANT_RED};
+    border-bottom: 1px solid rgba(255, 70, 85, 0.25);
+    padding-bottom: 6px;
+}}
+
+/* Istatistik kutulari */
+[data-testid="stMetricValue"] {{
+    color: {VALORANT_RED};
+    font-weight: 800;
+}}
+
+/* Kaynak paneli */
+[data-testid="stExpander"] {{
+    border: 1px solid rgba(255, 70, 85, 0.25);
+    border-radius: 2px;
+}}
+
+/* Sohbet giris kutusu */
+[data-testid="stChatInput"] {{
+    border: 1px solid rgba(255, 70, 85, 0.35);
+    border-radius: 2px;
+}}
+</style>
+"""
+
 
 def render_sidebar() -> None:
     """Kenar cubugu: bilgi tabani istatistikleri, model bilgisi, ornek sorular."""
@@ -433,19 +509,32 @@ def main() -> None:
     if "pending_question" not in st.session_state:
         st.session_state.pending_question = None
 
-    st.title("🎯 Valorant Bilgi Asistanı")
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+    st.title("Valorant Bilgi Asistanı")
     st.caption(
-        "Foundry Local + SQLite + RAG — tamamen çevrimdışı çalışan yerel soru-cevap asistanı"
+        "Foundry Local + SQLite + RAG · tamamen çevrimdışı · veri cihazdan çıkmaz"
     )
 
     render_sidebar()
 
     # Sohbet bostayken kisa bir yonlendirme gosteriyoruz.
     if not st.session_state.messages:
-        st.info(
-            "Bu asistan yalnızca `data/` klasöründeki dokümanlara dayanarak cevap verir. "
-            "Dokümanlarda olmayan bir soru sorarsanız bilmediğini söyler — "
-            "soldaki örnek sorulardan biriyle deneyebilirsiniz."
+        st.markdown(
+            f"""
+            <div style="
+                border-left: 3px solid {VALORANT_TEAL};
+                background: rgba(15, 182, 168, 0.07);
+                padding: 14px 18px;
+                margin: 8px 0 18px 0;
+                border-radius: 2px;">
+                <strong style="letter-spacing:1px;">BRIEFING</strong><br>
+                Bu asistan yalnızca <code>data/</code> klasöründeki dokümanlara dayanarak
+                cevap verir. Dokümanlarda olmayan bir soru sorarsan bilmediğini söyler —
+                soldaki örnek sorulardan biriyle başlayabilirsin.
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
     # Onceki mesajlari yeniden ciz.
@@ -464,17 +553,19 @@ def main() -> None:
     if not question:
         return
 
-    st.session_state.messages.append(
-        {"role": "user", "content": question, "avatar": "🧑"}
-    )
-    with st.chat_message("user", avatar="🧑"):
+    # Soruyu once SADECE ekranda gosteriyoruz, gecmise henuz yazmiyoruz.
+    # Sebep: cevap uretilirken kullanici baska bir dugmeye basarsa Streamlit
+    # betigi bastan calistirir ve uretim yarida kesilir. Soruyu gecmise hemen
+    # yazsaydik, cevabi olmayan "oksuz" bir soru mesaji kalirdi (gozlemlendi).
+    # Ikisini de en sonda, cevap hazir olunca birlikte yaziyoruz.
+    with st.chat_message("user", avatar=USER_AVATAR):
         st.markdown(question)
 
     # Retrieval ve alaka denetimi burada, TEK SEFER yapiliyor.
     with st.spinner("Dokümanlar taranıyor..."):
         system_prompt, chunks, refusal, context = retrieve_and_gate(question)
 
-    with st.chat_message("assistant", avatar="🎯"):
+    with st.chat_message("assistant", avatar=BOT_AVATAR):
         if refusal is not None:
             # Dokumanlarda cevap yok: hicbir uretim yapmadan mesaji gosteriyoruz.
             answer = refusal
@@ -494,8 +585,12 @@ def main() -> None:
 
         render_sources(chunks)
 
+    # Cevap tamamlandi: soru ve cevabi birlikte gecmise yaziyoruz.
     st.session_state.messages.append(
-        {"role": "assistant", "content": answer, "chunks": chunks, "avatar": "🎯"}
+        {"role": "user", "content": question, "avatar": USER_AVATAR}
+    )
+    st.session_state.messages.append(
+        {"role": "assistant", "content": answer, "chunks": chunks, "avatar": BOT_AVATAR}
     )
 
 
