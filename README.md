@@ -1,5 +1,7 @@
 # Valorant Bilgi Asistanı
 
+*Türkçe · [English README](README_EN.md)*
+
 Microsoft Foundry Local, SQLite ve RAG (Retrieval-Augmented Generation) deseni kullanan,
 **tamamen çevrimdışı** çalışan bir soru-cevap asistanı. Valorant hakkındaki 15 dokümana
 dayanarak soru cevaplar; internet bağlantısı, bulut hesabı veya API anahtarı
