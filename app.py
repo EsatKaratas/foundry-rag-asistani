@@ -158,17 +158,21 @@ def build_context(chunks: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-def answer_query(question: str, k: int = 3) -> tuple[str, list[dict]]:
-    """RAG pipeline'inin tamamini calistirir: getir (retrieve) + uret (generate).
+def retrieve_and_gate(question: str, k: int = 3):
+    """RAG'in "getir + alaka denetle" asamasi.
 
-    Doner: (model_cevabi, kullanilan_parcalar)
+    Hem akissiz (answer_query) hem akisli (stream_answer) yol ayni mantigi
+    kullansin diye ayri bir fonksiyona alindi.
+
+    Doner: (system_prompt, kullanilan_parcalar, red_mesaji)
+    red_mesaji None degilse hicbir uretim yapilmamalidir.
     """
     chunks = get_top_chunks(question, k=k)
 
     # 1. Kapi (ucuz): en iyi parca bile cok dusuk skorluysa, hicbir LLM cagrisi
     # yapmadan eliyoruz.
     if not chunks or chunks[0]["score"] < SIMILARITY_THRESHOLD:
-        return NO_INFO_MESSAGE, chunks
+        return None, chunks, NO_INFO_MESSAGE
 
     client = get_client()
 
@@ -183,12 +187,23 @@ def answer_query(question: str, k: int = 3) -> tuple[str, list[dict]]:
             relevant_chunks.append(chunk)
 
     if not relevant_chunks:
-        return NO_INFO_MESSAGE, chunks
+        return None, chunks, NO_INFO_MESSAGE
 
-    chunks = relevant_chunks
-    context = build_context(chunks)
-    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
+    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=build_context(relevant_chunks))
+    return system_prompt, relevant_chunks, None
 
+
+def answer_query(question: str, k: int = 3) -> tuple[str, list[dict]]:
+    """RAG pipeline'inin tamamini calistirir: getir (retrieve) + uret (generate).
+
+    Akissiz surum - testler bunu kullanir.
+    Doner: (model_cevabi, kullanilan_parcalar)
+    """
+    system_prompt, chunks, refusal = retrieve_and_gate(question, k=k)
+    if refusal is not None:
+        return refusal, chunks
+
+    client = get_client()
     answer = _generate_answer(client, system_prompt, question, max_tokens=400)
 
     # Nadiren, "/no_think" yonergesine ragmen model yine de uzun bir ic dusunme
@@ -202,24 +217,151 @@ def answer_query(question: str, k: int = 3) -> tuple[str, list[dict]]:
     return answer, chunks
 
 
+def stream_generation(system_prompt: str, question: str):
+    """Cevabi parca parca (token token) ureten akisli surum - arayuz bunu kullanir.
+
+    Bir generator dondurur; Streamlit'in st.write_stream fonksiyonu bunu okuyup
+    ekrana yazarken kullaniciya cevap yaziliyormus gibi gorunur.
+
+    Teknik zorluk: model cevaptan once <think>...</think> blogu uretiyor ve bu
+    blok kullaniciya GOSTERILMEMELI. Akissiz surumde tum metin geldikten sonra
+    regex ile temizlemek mumkundu; akisli surumde ise metin parca parca geldigi
+    icin, </think> etiketi gorulene kadar gelen parcalari biriktirip bastirmiyoruz.
+
+    Not: retrieval ve alaka denetimi burada YAPILMAZ; cagiran taraf bunlari
+    onceden yapip hazir system_prompt'u verir. Boylece (maliyetli) alaka
+    denetleyicisi soru basina yalnizca bir kez calisir.
+    """
+    client = get_client()
+    stream = client.chat.completions.create(
+        model=CHAT_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"{question} /no_think"},
+        ],
+        temperature=0.2,
+        max_tokens=400,
+        stream=True,
+    )
+
+    buffer = ""
+    thinking_handled = False
+    # Dusunme blogu kapandiktan sonra model genelde once bos satirlar gonderiyor;
+    # cevap bos satirla baslamasin diye ilk gercek metne kadar bunlari kirpiyoruz.
+    content_started = False
+
+    def emit(text: str) -> str:
+        nonlocal content_started
+        cleaned = CJK_PATTERN.sub("", text)
+        if not content_started:
+            cleaned = cleaned.lstrip()
+            if cleaned:
+                content_started = True
+        return cleaned
+
+    for part in stream:
+        if not part.choices:
+            continue
+        delta = part.choices[0].delta.content or ""
+        if not delta:
+            continue
+
+        if thinking_handled:
+            piece = emit(delta)
+            if piece:
+                yield piece
+            continue
+
+        # Henuz dusunme blogunun bitip bitmedigini bilmiyoruz: biriktir.
+        buffer += delta
+
+        if "</think>" in buffer:
+            # Dusunme blogu bitti; sonrasindaki metni yayinlamaya basla.
+            thinking_handled = True
+            remainder = buffer.split("</think>", 1)[1]
+            buffer = ""
+            piece = emit(remainder)
+            if piece:
+                yield piece
+        elif "<think>" not in buffer and len(buffer) > 12:
+            # Yeterince metin geldi ve icinde <think> yok: bu model dusunme
+            # adimi uretmiyor demektir, biriktirmeyi birakip dogrudan yayinla.
+            thinking_handled = True
+            piece = emit(buffer)
+            buffer = ""
+            if piece:
+                yield piece
+
+    # Akis bitti ama hicbir sey yayinlanmadiysa (ornegin dusunme blogu
+    # kapanmadan token butcesi doldu), kullaniciya ham dusunme metni yerine
+    # anlasilir bir mesaj gosteriyoruz.
+    if not thinking_handled:
+        yield FALLBACK_MESSAGE
+
+
+def render_sources(chunks: list[dict]) -> None:
+    """Cevabin dayandigi dokuman parcalarini acilir bir panelde gosterir."""
+    if not chunks:
+        return
+    with st.expander("Kullanılan doküman parçaları (retrieval sonucu)"):
+        for i, chunk in enumerate(chunks, start=1):
+            st.markdown(
+                f"**[{i}] {chunk['source']}** — benzerlik skoru: {chunk['score']:.3f}"
+            )
+            st.text(chunk["content"])
+
+
 def main() -> None:
     st.set_page_config(page_title="Yerel RAG Asistani", page_icon="🤖")
     st.title("🤖 Yerel Doküman Asistanı")
     st.caption("Foundry Local + SQLite + RAG — tamamen çevrimdışı çalışır.")
 
-    question = st.text_input("Sorunuzu yazın:")
+    # Sohbet gecmisi Streamlit'in oturum durumunda (session_state) tutuluyor.
+    # Streamlit her etkilesimde tum betigi bastan calistirdigi icin, gecmisi
+    # burada saklamazsak her soruda onceki mesajlar kaybolurdu.
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-    if st.button("Sor") and question.strip():
-        with st.spinner("Cevap hazırlanıyor..."):
-            answer, chunks = answer_query(question)
+    with st.sidebar:
+        st.subheader("Sohbet")
+        st.caption(f"Bu oturumda {len(st.session_state.messages) // 2} soru soruldu.")
+        if st.button("Sohbeti temizle"):
+            st.session_state.messages = []
+            st.rerun()
 
-        st.markdown("### Cevap")
-        st.write(answer)
+    # Onceki mesajlari yeniden ciz.
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if message["role"] == "assistant":
+                render_sources(message.get("chunks", []))
 
-        with st.expander("Kullanılan doküman parçaları (retrieval sonucu)"):
-            for i, chunk in enumerate(chunks, start=1):
-                st.markdown(f"**[{i}] {chunk['source']}** — benzerlik skoru: {chunk['score']:.3f}")
-                st.text(chunk["content"])
+    question = st.chat_input("Sorunuzu yazın...")
+    if not question:
+        return
+
+    st.session_state.messages.append({"role": "user", "content": question})
+    with st.chat_message("user"):
+        st.markdown(question)
+
+    # Retrieval ve alaka denetimi burada, TEK SEFER yapiliyor.
+    with st.spinner("Dokümanlar taranıyor..."):
+        system_prompt, chunks, refusal = retrieve_and_gate(question)
+
+    with st.chat_message("assistant"):
+        if refusal is not None:
+            # Dokumanlarda cevap yok: hicbir uretim yapmadan mesaji gosteriyoruz.
+            answer = refusal
+            st.markdown(answer)
+        else:
+            # st.write_stream generator'i okurken cevabi ekrana parca parca
+            # yazar ve tamamlanmis metni geri dondurur.
+            answer = st.write_stream(stream_generation(system_prompt, question))
+        render_sources(chunks)
+
+    st.session_state.messages.append(
+        {"role": "assistant", "content": answer, "chunks": chunks}
+    )
 
 
 if __name__ == "__main__":
