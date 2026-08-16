@@ -5,12 +5,14 @@ Microsoft Foundry Local, SQLite ve RAG (Retrieval-Augmented Generation) deseni k
 dayanarak soru cevaplar; internet bağlantısı, bulut hesabı veya API anahtarı
 gerektirmez, veri cihazdan çıkmaz.
 
-Projenin asıl konusu şu: **dokümanlarda cevabı olmayan bir soru sorulduğunda ne
-oluyor?** Sıradan bir RAG kurgusu bu durumda uydurmaya başlar. Bu asistan, cevap
-üretmeden önce üç, ürettikten sonra iki kapıdan geçiriyor ve bu kapıların çoğu
-modele hiç soru sormadan, kodla karar veriyor. Her kapının teste ne kattığı
-[ölçülerek gösterildi](#ablasyon-çalışması-her-katman-gerçekten-gerekli-mi):
-savunmasız bir RAG, cevaplanamaz 4 sorudan 3'üne uydurma cevap veriyor.
+Projede en çok uğraştığım konu şu oldu: **dokümanlarda cevabı olmayan bir soru
+sorulunca ne oluyor?** Basit bir RAG kurgusunda model uydurmaya başlıyor. Bu yüzden
+soru, cevap üretilmeden önce üç, üretildikten sonra iki kontrolden geçiyor. Bu
+kontrollerin çoğu modele hiç soru sormuyor, kararı kod veriyor.
+
+Her kontrolün gerçekten gerekli olup olmadığını
+[tek tek kapatıp ölçtüm](#ablasyon-çalışması-her-katman-gerçekten-gerekli-mi):
+hiç kontrol olmayan bir RAG, cevaplanamaz 4 sorudan 3'üne uydurma cevap veriyor.
 
 **Arayüz:** sohbet geçmişi, token token akan cevaplar (streaming), kenar çubuğunda
 bilgi tabanının içeriği (hangi doküman, kaç parça) ve her cevabın altında
@@ -104,23 +106,23 @@ klasörüne `.txt` dosyaları koyup `python ingest.py`'ı tekrar çalıştırmak
 
 ## Tasarım İlkesi: kesin hesaplanabilen şeyi modele sorma
 
-Bu projenin bütün savunma katmanları tek bir ilkeden çıktı. İlke, üç ayrı
-denemenin ölçülerek başarısız olmasından sonra benimsendi.
+Sistemdeki bütün kontroller tek bir fikirden çıktı. O fikre de üç şeyi deneyip
+başarısız olduklarını görerek vardım.
 
-**Popüler bir konu, RAG'i özellikle zorluyor.** Valorant yaygın bilinen bir oyun
-olduğu için model, bağlamda olmayan bilgiyi kendi eğitim verisinden verebiliyor:
-*"Valorant 2020'de çıktı"* — doğru bilgi, ama bu dokümanlarda yok. Sıradan bir
-RAG kurgusunda bunu ayırt etmenin hiçbir yolu yoktur; cevap doğru göründüğü için
-gözden kaçar.
+**Popüler bir konu seçmek işi zorlaştırıyor.** Valorant çok bilinen bir oyun
+olduğu için model, dokümanlarda olmayan bilgiyi kendi eğitim verisinden
+verebiliyor: *"Valorant 2020'de çıktı"* — bilgi doğru ama benim dokümanlarımda
+yok. Cevap doğru göründüğü için de fark edilmesi zor.
 
-**Kosinüs eşiği tek başına yetmiyor, çünkü korpusa bağımlı.** Tüm dokümanlar tek
-bir konu hakkında olduğunda kosinüs skoru artık *"bu parça soruyu cevaplıyor
-mu"*yu değil *"bu metin Valorant hakkında mı"*yı ölçer. Ölçülen değer:
-dokümanlarda cevabı olmayan sorular bile **0.53 - 0.60** skorluyor. Bu yüzden
-üst eşik 0.50'den 0.75'e çekildi — ama asıl çözüm eşiği oynatmak değildi.
+**Kosinüs eşiği tek başına yetmedi.** Bütün dokümanlar aynı konu hakkında
+olduğunda skor, *"bu parça soruyu cevaplıyor mu"*yu değil *"bu metin Valorant
+hakkında mı"*yı ölçmeye başlıyor. Ölçtüğüm değerler: dokümanlarda cevabı olmayan
+sorular bile **0.53 - 0.60** alıyordu. Eşiği 0.50'den 0.75'e çektim ama asıl
+çözüm bu değildi.
 
-**Modeli kendi çıktısının hakemi yapmak çalışmadı.** Üretim sonrası bir dayanak
-kontrolü (*"cevaptaki bilgi bağlamda geçiyor mu?"*) üç farklı promptla denendi:
+**Modele kendi cevabını denetletmek işe yaramadı.** Üretimden sonra
+*"cevaptaki bilgi bağlamda geçiyor mu?"* diye soran bir kontrol ekledim, üç farklı
+promptla denedim:
 
 | Denenen prompt | Sonuç |
 |---|---|
@@ -128,15 +130,13 @@ kontrolü (*"cevaptaki bilgi bağlamda geçiyor mu?"*) üç farklı promptla den
 | "Her şey metinde geçiyor mu?" | Geçerli cevapları da eledi |
 | "Uydurma var mı?" | Yeniden ifade edilmiş doğru cevapları uydurma sandı |
 
-Sebep açık: o bilgiyi bağımsız olarak "bilen" model, kontrol katmanında da aynı
-yanılgıya düşüyor. LLM tabanlı kontroller olasılıksaldır ve aynı modelin kendi
-hatasını yakalaması beklenemez.
+Sebebi aslında basit: o bilgiyi zaten "bilen" model, kontrol yaparken de aynı
+hataya düşüyor. Aynı modelin kendi hatasını yakalamasını beklemek çalışmıyor.
 
-**Benimsenen ilke:** kesin olarak hesaplanabilen hiçbir şey modelden istenmez.
-Bu ilke sistemde dört ayrı yerde uygulandı — sayı doğrulaması, özel isim
-dayanağı, sözcüksel kapı ve cevap uzunluğu — ve hepsi aşağıda ayrı ayrı
-açıklanıyor. LLM yalnızca gri bölgedeki alaka kararında kullanılıyor, çünkü
-orada kesin bir ölçüt yok.
+**Vardığım sonuç:** kod ile kesin olarak hesaplanabilen hiçbir şeyi modelden
+istemedim. Bunu dört yerde uyguladım — sayı doğrulaması, özel isim dayanağı,
+sözcüksel kapı ve cevap uzunluğu. Model yalnızca gri bölgedeki alaka kararında
+kullanılıyor, çünkü orada kesin bir ölçüt yok.
 
 ## Test Sonuçları
 
@@ -194,44 +194,42 @@ katmanı tek tek kapatıp testi yeniden koşar:
 | Kosinüs eşiği kapalı | 19/19 | 0 vaka |
 | **Çıplak RAG** (hiç savunma yok) | **16/19** | **3 vaka** |
 
-Üç sonuç çıkıyor:
+Tablodan çıkardığım üç şey:
 
-**1. Çıplak RAG, cevaplanamaz 4 sorudan 3'ünü kaybediyor.** Sade "getir + üret"
-kurgusu, dokümanlarda cevabı olmayan sorulara uydurma cevap veriyor. Savunma
-katmanları bu projenin süsü değil, çalışmasının şartı.
+**1. Kontrolsüz RAG, cevaplanamaz 4 sorudan 3'ünü kaybediyor.** Yani bu kontroller
+projenin süsü değil, çalışmasının şartı.
 
-**2. İki deterministik katman tek başına 2 vaka kurtarıyor.** Sözcüksel kapı ve özel
+**2. En çok katkıyı iki deterministik kontrol yapıyor.** Sözcüksel kapı ve özel
 isim kontrolü — ikisi de hiç LLM çağrısı yapmıyor.
 
-**3. Üç katman bu test setinde 0 vaka katıyor.** Bu, "silinmeliler" demek değil;
-**test setinin o katmanların savunduğu hata tipini içermediği** anlamına geliyor.
-Nitekim ablasyon sırasında tam da böyle bir açık bulundu (aşağıya bakın) ve teste
-eklendi. Doğru tepki katmanı silmek değil, eksik test vakasını yazmaktı.
+**3. Üç kontrol bu test setinde 0 vaka katıyor.** Bunu "silelim" diye okumadım;
+daha büyük ihtimalle **test setim o kontrollerin savunduğu hata tipini
+içermiyordu**. Nitekim tam da öyle bir açık buldum (aşağıda) ve teste ekledim.
 
 Bu tablo bilgi tabanı büyütülürken üç kez yeniden ölçüldü (6, 10 ve 15 doküman).
 Her katmanın kurtardığı vaka sayısı değişmedi — yani sonuçlar tek bir korpus
 boyutuna özgü bir tesadüf değil.
 
-### Ablasyonun bulduğu gerçek açık
+### Ablasyonun bulduğu açık
 
-Ablasyon "LLM alaka denetleyicisi 0 vaka katıyor" dediğinde, silmek yerine şu
-soruldu: *bu katman neyi savunuyordu ve test seti onu ölçüyor mu?* Cevap hayırdı.
-Eksik vaka şuydu — **kelimeleri korpusta geçen ama cevabı geçmeyen soru**:
+"LLM alaka denetleyicisi 0 vaka katıyor" sonucunu görünce katmanı silmek yerine
+şunu sordum: *bu katman neyi savunuyordu, testim onu ölçüyor mu?* Ölçmüyordu.
+Eksik olan vaka şuydu — **kelimeleri dokümanlarda geçen ama cevabı geçmeyen soru**:
 
 ```
 Soru : "Duelist rolündeki ajanların isimleri nelerdir?"
 Cevap: "Jett, Sage, Raze ve Breach'tir. (Kaynak: ajan_rolleri.txt)"
 ```
 
-Dokümanlarda **hiçbir ajan ismi geçmiyor.** Sistem uydurdu ve üstüne kaynak
-göstererek halüsinasyonu yetkili gösterdi (bilgi ayrıca yanlış: Sage sentinel,
-Breach initiator). Hiçbir katman yakalayamadı: sözcüksel kapı `duelist` eşleştiği
-için geçirdi, sayı kontrolü rakam olmadığı için göremedi.
+Dokümanlarımda **hiçbir ajan ismi geçmiyor.** Sistem uydurdu, üstüne bir de kaynak
+gösterdi — yani yanlış bilgi güvenilir göründü (bilgi de ayrıca hatalı: Sage
+sentinel, Breach initiator). Hiçbir kontrol yakalayamadı: sözcüksel kapı `duelist`
+eşleştiği için geçirdi, sayı kontrolü rakam olmadığı için göremedi.
 
-Çözüm, sayı kontrolünün doğal genellemesi oldu: **cevapta geçen ama bağlamda hiç
-geçmeyen özel isimler**. Model paraphrase yaparken yeni özel isim uydurmaz; ortaya
-çıkan bir özel isim varsa o bilgi bağlamdan gelmiyordur. Entegrasyondan önce
-6 geçerli cevaba karşı ölçüldü: **0 yanlış eleme**.
+Çözümü sayı kontrolünü genişleterek buldum: **cevapta geçen ama bağlamda hiç
+geçmeyen özel isimler**. Model kendi cümlesiyle anlatırken yeni bir özel isim
+uydurmaz; ortaya çıkan bir isim varsa o bilgi bağlamdan gelmiyordur. Eklemeden
+önce geçerli cevaplara karşı denedim: **0 yanlış eleme**.
 
 ## Tasarım Kararları ve Kısıtlar
 
@@ -353,12 +351,12 @@ geçmeyen özel isimler**. Model paraphrase yaparken yeni özel isim uydurmaz; o
 
 ## Karar İzi Paneli
 
-Bir RAG boru hattı kullanıcı için tamamen görünmezdir: ekranda yalnızca cevap
-(ya da "bilmiyorum") belirir, o kararı **hangi katmanın** verdiği görünmez. Bu da
-sistemi hem hata ayıklaması zor hem de güvenilmesi zor hale getirir — "bilmiyorum"
-diyen bir asistan, düşünüp bilmediğine mi karar verdi yoksa hiç bakmadı mı?
+Geliştirirken en çok zorlandığım şey, sistemin neden öyle davrandığını görememekti:
+ekranda yalnızca cevap (ya da "bilmiyorum") beliriyor, o kararı **hangi kontrolün**
+verdiği görünmüyor. Kullanıcı açısından da aynı sorun var — "bilmiyorum" diyen bir
+asistan bakıp da mı bulamadı, yoksa hiç bakmadı mı?
 
-Her cevabın altındaki **🔍 Karar izi** paneli bunu açıyor. Gerçek çıktılar:
+Bu yüzden her cevabın altına **🔍 Karar izi** panelini ekledim. Gerçek çıktılar:
 
 ```
 Soru: "Duelist rolünün görevi nedir?"
@@ -375,17 +373,16 @@ Soru: "Valorant turnuvalarında ödül havuzu ne kadar?"
   ⛔ 2. Sözcüksel dayanak  aranan: turnu, odul, havuz — hiçbiri metinde geçmiyor
 ```
 
-İkinci örnek, kosinüs benzerliğinin neden tek başına yetmediğini tek bakışta
-gösteriyor: skor **0.598** ile gayet "alakalı" görünüyor, ama sorulan kelimelerin
-hiçbiri metinde yok. Panel ayrıca hangi kararların **hiç LLM çağrısı yapmadan**
-verildiğini de görünür kılıyor.
+İkinci örnek kosinüs benzerliğinin neden yetmediğini tek bakışta gösteriyor: skor
+**0.598** ile gayet "alakalı" duruyor, ama sorulan kelimelerin hiçbiri metinde yok.
+Panelde ayrıca hangi kararların **hiç LLM çağrısı yapılmadan** verildiği de
+görünüyor.
 
 ## "Bilmiyorum" Neden Bilmiyorum
 
-Kullanıcı açısından "Bu bilgi elimdeki dokümanlarda yok" tek başına çıkmaz
-sokaktır: sorusunun mu yanlış anlaşıldığını, yoksa bilginin gerçekten mi
-olmadığını ayırt edemez. Sözcüksel kapı bu farkı zaten hesaplıyor — o bilgi
-kullanıcıya da veriliyor:
+"Bu bilgi elimdeki dokümanlarda yok" cevabı tek başına kullanıcıyı çıkmaza
+sokuyor: sorusu mu yanlış anlaşıldı, yoksa bilgi gerçekten yok mu, anlayamıyor.
+Sözcüksel kapı bu bilgiyi zaten hesapladığı için kullanıcıya da gösteriyorum:
 
 ```
 Soru: "Valorant turnuvalarında ödül havuzu ne kadar?"
@@ -449,6 +446,11 @@ Projede takip edilen kaynaklar:
 
 **Diğer:**
 - [SQLite resmi dokümantasyonu](https://www.sqlite.org/) — veritabanı motoru
+
+**Yapay zekâ desteği:** Geliştirme sürecinde Claude (Anthropic) asistanından
+yararlandım — özellikle hata ayıklama, kod gözden geçirme ve dokümantasyon
+aşamalarında. README'deki bütün ölçümler bu makinede çalıştırılarak elde edildi;
+`python test_qa.py` ve `python ablation.py` ile yeniden üretilebilir.
 
 ### Bilgi tabanı hakkında
 
